@@ -3,6 +3,7 @@ from multipathogen_sero import config  # noqa: F401
 from multipathogen_sero.simulate import (
     simulate_infections,
     simulate_infections_survivor,
+    simulate_infections_discrete,
     simulation_to_regression_df,
     simulation_to_survey_long,
     survey_long_to_wide
@@ -11,6 +12,7 @@ from multipathogen_sero.simulate import (
 __all__ = [
     "simulate_infections",
     "simulate_infections_survivor",
+    "simulate_infections_discrete",
     "simulation_to_regression_df",
     "simulation_to_survey_long",
     "survey_long_to_wide"

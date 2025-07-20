@@ -97,7 +97,7 @@ def simulate_infections_survivor(
         n_pathogens: int,
         survivor_list: List[Callable[[float],np.ndarray]],
         interaction_mat: Optional[np.ndarray] = None,
-        time_precision: float = 0.0011,
+        time_precision: float = 0.001,
         t_max: float = 100,
         birth_times: Optional[np.ndarray] = None,
         random_seed: Optional[int] = None
@@ -108,6 +108,9 @@ def simulate_infections_survivor(
     """
     if birth_times is None:
         birth_times = np.zeros(n_people, dtype=float)
+    else:
+        if birth_times.shape[0] != n_people:
+            raise ValueError("birth_times must have the same length as n_people.")
     if random_seed is not None:
         np.random.seed(random_seed)
     if interaction_mat is None:
@@ -153,6 +156,71 @@ def simulate_infections_survivor(
                 break
     return pd.DataFrame(infection_times, columns=['time', 'event', 'individual', 'pathogen'])
 
+def simulate_infections_discrete(
+        n_people: int,
+        n_pathogens: int,
+        p_infection: np.ndarray,
+        interaction_mat: Optional[np.ndarray] = None,
+        t_grid: Optional[np.ndarray] = None,
+        birth_times: Optional[np.ndarray] = None,
+        random_seed: Optional[int] = None
+    ) -> pd.DataFrame:
+    """
+    Simulate infections using a discrete time approach.
+    Parameters:
+        n_people (int): Number of individuals.
+        n_pathogens (int): Number of pathogens.
+        p_infection (ArrayLike): Probability of infection at each time point for each pathogen. Shape should be (n_pathogens, n_steps).
+        interaction_mat (Optional[np.ndarray]): Interaction matrix for pathogens. The k,l entry indicates the effect of pathogen k on pathogen l.
+        t_grid (ArrayLike): Time grid for the simulation.
+        birth_times (Optional[np.ndarray]): Birth times for each individual. If None, individuals are assumed to be born at time 0.
+        random_seed (Optional[int]): Random seed for reproducibility.
+    """
+    n_steps = p_infection.shape[1]
+    p_uninfected = 1 - p_infection
+    if t_grid is None:
+        t_grid = np.linspace(1, n_steps, n_steps)
+    else:
+        if t_grid.shape[0] != n_steps:
+            raise ValueError("t_grid must have the same length as the number of time steps in p_infection.")
+        if not np.all(np.diff(t_grid) > 0):
+            raise ValueError("t_grid must be a strictly increasing sequence.")
+    if interaction_mat is None:
+        interaction_mat = np.ones((n_pathogens, n_pathogens))
+    if birth_times is None:
+        birth_times = np.zeros(n_people, dtype=float)
+    else:
+        birth_times = np.asarray(birth_times)
+        if birth_times.shape[0] != n_people:
+            raise ValueError("birth_times must have the same length as n_people.")
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    infection_times = []
+    for i in range(n_people):
+        birth_time = birth_times[i]
+        infection_times.append((birth_time, 'birth', i, None))
+        infection_status = np.zeros(n_pathogens, dtype=bool)
+        susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
+        for t_idx, t in enumerate(t_grid):
+            if t < birth_time:
+                continue
+            # Calculate the effective probabilities of infection for each pathogen
+            effective_p_uninfected = p_uninfected[:, t_idx] ** susceptibility_factors
+            # Bernoulli trial for each pathogen
+            infection_events = np.random.uniform(0, 1, size=n_pathogens) > effective_p_uninfected
+            # no reinfections
+            infection_events[infection_status] = False
+            # Record the infection events
+            k_new = np.where(infection_events)[0]
+            if k_new.size > 0:
+                for k in k_new:
+                    infection_times.append((t, 'seroconversion', i, k))
+                    infection_status[k] = 1
+                susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
+
+    return pd.DataFrame(infection_times, columns=['time', 'event', 'individual', 'pathogen'])
+
 
 def simulation_to_regression_df(
         simulation_df: pd.DataFrame,
@@ -181,13 +249,13 @@ def simulation_to_regression_df(
     regression_df['stop_event_pathogen'] = regression_df['stop_event_pathogen']
 
     # 4. Add serostatus columns for each pathogen at start_time
-    n_pathogens = int(simulate_infections_df['pathogen'].dropna().max()) + 1
+    n_pathogens = int(simulation_df['pathogen'].dropna().max()) + 1
 
     for k in range(n_pathogens):
         # For each row, check if there was a seroconversion for pathogen k before or at start_time
-        sero_times = simulate_infections_df[
-            (simulate_infections_df['event'] == 'seroconversion') &
-            (simulate_infections_df['pathogen'] == k)
+        sero_times = simulation_df[
+            (simulation_df['event'] == 'seroconversion') &
+            (simulation_df['pathogen'] == k)
         ][['individual', 'time']]
         sero_times = sero_times.rename(columns={'time': f'seroconv_time_{k}'})
         # Merge to get seroconversion time for each individual
