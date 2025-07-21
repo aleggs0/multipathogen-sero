@@ -1,0 +1,182 @@
+---
+title: "mordor-eda"
+author: "Alex Yan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# The dataset
+```{r}
+library(tidyverse)
+library(icenReg)
+library(lubridate)
+```
+
+```{r}
+mordor_df <- read_csv("C:/Users/alexy/sero/multipathogen-sero/data/external/mordor-ab-analysis-public.csv")
+mordor_df <- mordor_df %>%
+  mutate(testdate = ymd(testdate))
+startyear = min(mordor_df$testdate) %>% year()
+infty_month = 120
+# Create pathogen_antigen_df
+pathogen_antigen_df <- mordor_df %>%
+  select(pathogen, antigen, serocut, serocut_desc) %>%
+  distinct() %>%
+  mutate(logserocut = log10(serocut))
+
+# Create child_visit_df
+child_visit_df <- mordor_df %>%
+  select(clusterid_public, phase, arm, childid_public, agem, agem_start, agem_start_under6, 
+         sex, testdate, wet_start, wet_end, season, malaria_thicksmear, malaria_density, 
+         malaria_gameto, dbsid, type, well) %>%
+  distinct()
+
+# Create sero_df
+sero_df <- mordor_df %>%
+  select(childid_public, testdate, phase, pathogen, antigen, antigenf, mfi, logmfi, seropos)
+
+# Create seropositivity_long
+seropositivity_long <- sero_df %>%
+  select(childid_public, testdate, phase, antigen, seropos) %>% 
+  filter(antigen!='gst')
+
+# Create seropositivity_wide
+seropositivity_wide <- seropositivity_long %>%
+  pivot_wider(
+    names_from = antigen,
+    values_from = seropos,
+    values_fn = list(seropos = first)
+  )
+```
+
+
+```{r}
+# Get the list of antigen column names from pathogen_antigen_df
+
+antigen_columns <- pathogen_antigen_df$antigen
+antigen_columns <- antigen_columns[antigen_columns != 'gst']
+
+# Create lagged columns for each antigen dynamically
+seropositivity_wide_with_lags <- seropositivity_wide %>%
+  arrange(childid_public, testdate) %>%
+  group_by(childid_public) %>%
+  mutate(
+    phase_lag = lag(phase),
+    testmonth = (year(testdate) - startyear) * 12 + month(testdate),
+    testmonth_lag = lag(testmonth),
+    across(all_of(antigen_columns), ~ lag(.), .names = "{.col}_lag")
+  ) %>% #throw away the first entry of each group
+  filter(phase > min(phase)) %>% 
+  ungroup()
+seropositivity_wide_with_lags
+```
+
+
+
+
+```{r}
+#### OPTIONS ####
+antigen <- 'ctb' # Choose an antigen to analyse e.g. 'ctb', 'pmmsp1'
+#################
+# Filter rows for new seropositivity discoveries (antigen == 1 and {antigen}_lag == 0)
+new_seropositivity <- seropositivity_wide_with_lags %>%
+  filter(!!sym(antigen) == 1 & !!sym(paste0(antigen, "_lag")) == 0)
+
+# Filter rows for seroreversion discoveries (antigen == 0 and {antigen}_lag == 1)
+seroreversion <- seropositivity_wide_with_lags %>%
+  filter(!!sym(antigen) == 0 & !!sym(paste0(antigen, "_lag")) == 1)
+
+# Plot histogram for new seropositivity discoveries
+p1 <- ggplot(new_seropositivity, aes(x = testdate)) +
+  geom_histogram(binwidth = 30, fill = "blue", color = "black") +
+  labs(
+    title = paste("New Seropositivity Discoveries for", antigen),
+    x = "Test Date",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+# Plot histogram for seroreversion discoveries
+p2 <- ggplot(seroreversion, aes(x = testdate)) +
+  geom_histogram(binwidth = 30, fill = "red", color = "black") +
+  labs(
+    title = paste("Seroreversion Discoveries for", antigen),
+    x = "Test Date",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+# Display both plots
+print(p1)
+print(p2)
+```
+
+
+
+```{r}
+infty_month<-120
+antigen_survivor_df <- seropositivity_wide_with_lags %>% 
+  filter(!!sym(paste0(antigen, "_lag")) == 0) %>% 
+  mutate(
+    seroconversion = !!sym(antigen) == 1 & !!sym(paste0(antigen, "_lag")) == 0,
+    left_trunc = testmonth_lag,
+    int_lower = if_else(seroconversion, testmonth_lag, testmonth),
+    int_upper = if_else(seroconversion, testmonth, infty_month)  # Use Inf for infinity
+  ) %>% 
+  select(left_trunc, int_lower, int_upper)
+fit_nocov <- ic_sp(Surv(left_trunc, int_lower, int_upper, type = "interval") ~ 1, data = antigen_survivor_df)
+# Plot survival estimate
+plot(fit_nocov, main = "Survivor Function (No Covariates)", xlab = "Time", ylab = "Survival Probability")
+```
+
+
+
+```{r}
+# Load package
+library(icenReg)
+
+set.seed(123)
+n <- 200
+
+# Simulate left truncation (entry into study)
+entry <- runif(n, 0, 3)
+
+# Simulate true event times
+true_event_time <- rexp(n, rate = 0.5) + entry
+
+# Simulate inspection or censoring times
+inspection_time <- true_event_time + runif(n, 0.1, 1)
+
+# Simulate censoring indicator (20% right-censored)
+is_rcens <- rbinom(n, 1, prob = 0.2)
+
+# Left and right bounds of the interval
+left <- numeric(n)
+right <- numeric(n)
+
+# Interval-censored observations
+left[!is_rcens] <- pmax(entry[!is_rcens], true_event_time[!is_rcens] - runif(sum(!is_rcens), 0.5, 1))
+right[!is_rcens] <- inspection_time[!is_rcens]
+
+# Right-censored observations
+left[is_rcens] <- inspection_time[is_rcens]
+right[is_rcens] <- Inf  # Right-censoring represented with Inf
+
+# Covariates
+x1 <- rbinom(n, 1, 0.5)
+x2 <- rnorm(n)
+
+# Combine into data frame
+data <- data.frame(entry, left, right, x1, x2)
+
+fit_nocov <- ic_sp(Surv(entry, left, right, type = "interval") ~ 1, data = data)
+
+# Plot survival estimate
+plot(fit_nocov, main = "Survivor Function (No Covariates)", xlab = "Time", ylab = "Survival Probability")
+
+```
+
