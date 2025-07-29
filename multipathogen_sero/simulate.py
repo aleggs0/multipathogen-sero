@@ -224,7 +224,9 @@ def simulate_infections_discrete(
 
 def simulation_to_regression_df(
         simulation_df: pd.DataFrame,
-        k: Optional[int] = None
+        k_infector: [int] = None,
+        t_max: float = 100,
+        n_pathogens: Optional[int] = None
     ) -> pd.DataFrame:
 
     #  1. Rename columns
@@ -271,20 +273,20 @@ def simulation_to_regression_df(
     # Optional: reset index if needed
     regression_df = regression_df.reset_index(drop=True)
 
-    if k is not None:
+    if k_infector is not None:
         # Filter for intervals where individual is seronegative for pathogen k at start_time
-        regression_df_for_pathogen_k = regression_df[regression_df[f'serostatus_{k}'] == 0].copy()
+        regression_df_for_pathogen_k = regression_df[regression_df[f'serostatus_{k_infector}'] == 0].copy()
 
         # Add event column: 1 if seroconversion for k occurs at stop_event, else 0
         regression_df_for_pathogen_k['event'] = (
             (regression_df_for_pathogen_k['stop_event'] == 'seroconversion') &
-            (regression_df_for_pathogen_k['stop_event_pathogen'] == k)
+            (regression_df_for_pathogen_k['stop_event_pathogen'] == k_infector)
         ).astype(int)
 
         # Drop unnecessary columns
         regression_df_for_pathogen_k = regression_df_for_pathogen_k.drop(
             columns=[
-                'start_event', 'start_event_pathogen', 'stop_event', 'stop_event_pathogen', f'serostatus_{k}'
+                'start_event', 'start_event_pathogen', 'stop_event', 'stop_event_pathogen', f'serostatus_{k_infector}'
             ]
         )
         return regression_df_for_pathogen_k
