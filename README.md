@@ -22,6 +22,8 @@ Setup includes:
    python -m ipykernel install --user --name multipathogen-sero --display-name "Python3.11 (multipathogen-sero)"
    ```
 
+Warning: this may not work without some fiddling around with cmdstanpy
+
 ## Project Organization
 
 ```
