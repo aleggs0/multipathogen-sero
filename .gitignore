@@ -187,3 +187,6 @@ cython_debug/
 
 # Stan compiled files
 *.exe
+
+# VS Code settings
+.vscode/

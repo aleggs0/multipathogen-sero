@@ -9,6 +9,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
 from scipy.optimize import root_scalar
+from scipy.special import erf
 
 def simulate_infections(
         n_people: int,
@@ -47,7 +48,7 @@ def simulate_infections(
     infection_times = []
     for i in range(n_people):
         birth_time = birth_times[i]
-        infection_times.append((birth_time, 'birth', i, None))
+        infection_times.append((birth_time, 'birth', i+1, None))
         t_current = birth_time
         infection_status = np.zeros(n_pathogens, dtype=bool)  # Track infections for each pathogen
         susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
@@ -85,7 +86,7 @@ def simulate_infections(
                 assert earliest_accepted_proposal_index is not None
             t_current = earliest_accepted_proposal
             k = earliest_accepted_proposal_index
-            infection_times.append((t_current, 'seroconversion', i, k))
+            infection_times.append((t_current, 'seroconversion', i+1, k))
             infection_status[k] = 1
             if np.all(infection_status):
                 break
@@ -119,7 +120,7 @@ def simulate_infections_survivor(
     max_survivors = np.array([survivor_list[k](t_max) for k in range(n_pathogens)])
     for i in range(n_people):
         birth_time = birth_times[i]
-        infection_times.append((birth_time, 'birth', i, None))
+        infection_times.append((birth_time, 'birth', i+1, None))
         t_current = birth_time
         infection_status = np.zeros(n_pathogens, dtype=bool)  # Track infections for each pathogen
         while True:
@@ -150,7 +151,7 @@ def simulate_infections_survivor(
             if t_current >= t_max:
                 break
             k_min = proposal_indices[np.argmin(proposal_times)]
-            infection_times.append((t_current, 'seroconversion', i, k_min))
+            infection_times.append((t_current, 'seroconversion', i+1, k_min))
             infection_status[k_min] = 1
             if np.all(infection_status):
                 break
@@ -199,7 +200,7 @@ def simulate_infections_discrete(
     infection_times = []
     for i in range(n_people):
         birth_time = birth_times[i]
-        infection_times.append((birth_time, 'birth', i, None))
+        infection_times.append((birth_time, 'birth', i+1, None))
         infection_status = np.zeros(n_pathogens, dtype=bool)
         susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
         for t_idx, t in enumerate(t_grid):
@@ -215,7 +216,7 @@ def simulate_infections_discrete(
             k_new = np.where(infection_events)[0]
             if k_new.size > 0:
                 for k in k_new:
-                    infection_times.append((t, 'seroconversion', i, k))
+                    infection_times.append((t, 'seroconversion', i+1, k))
                     infection_status[k] = 1
                 susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
 
@@ -224,9 +225,8 @@ def simulate_infections_discrete(
 
 def simulation_to_regression_df(
         simulation_df: pd.DataFrame,
-        k_infector: [int] = None,
-        t_max: float = 100,
-        n_pathogens: Optional[int] = None
+        k_infector: Optional[int] = None,
+        t_max: float = 100
     ) -> pd.DataFrame:
 
     #  1. Rename columns
@@ -277,7 +277,7 @@ def simulation_to_regression_df(
         # Filter for intervals where individual is seronegative for pathogen k at start_time
         regression_df_for_pathogen_k = regression_df[regression_df[f'serostatus_{k_infector}'] == 0].copy()
 
-        # Add event column: 1 if seroconversion for k occurs at stop_event, else 0
+        # Add event column: 1 if seroconversion for k_infector occurs at stop_event, else 0
         regression_df_for_pathogen_k['event'] = (
             (regression_df_for_pathogen_k['stop_event'] == 'seroconversion') &
             (regression_df_for_pathogen_k['stop_event_pathogen'] == k_infector)
@@ -359,3 +359,28 @@ def survey_long_to_wide(
     survey_df.columns.name = None  # Remove the name of the columns index
     survey_df.columns = [f'serostatus_{col}' if isinstance(col, int) else col for col in survey_df.columns]
     return survey_df
+
+
+# baseline hazards / survivor functions
+def get_gaussian_foi(mu,sigma,a):
+    """Generate a Gaussian function for the force of infection."""
+    return lambda t: np.exp(-((t - mu) ** 2) / (2 * sigma ** 2)) * a
+def get_exponential_foi(lam, a):
+    """Generate an exponential function for the force of infection."""
+    return lambda t: np.exp(-lam * t) * a
+def get_constant_foi(a):
+    """Generate a constant force of infection."""
+    return lambda t: np.full_like(t, a, dtype=float)
+def get_gaussian_foi_survivor(mu, sigma, a):
+    norm = a * sigma * np.sqrt(np.pi / 2)
+    def S(t):
+        return np.exp(
+            -norm * (erf((t - mu) / (np.sqrt(2) * sigma)) - erf((-mu) / (np.sqrt(2) * sigma)))
+        )
+    return S
+def get_exponential_foi_survivor(lam, a):
+    def S(t):
+        return np.exp(-a * (1 - np.exp(-lam * t)) / lam)
+    return S
+def get_constant_foi_survivor(a):
+    return lambda t: np.exp(-a * t)

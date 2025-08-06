@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 #from dotenv import load_dotenv
 from loguru import logger
 
@@ -9,6 +10,12 @@ from loguru import logger
 # Paths
 PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
+
+CMDSTAN_PATHS = [
+    "C:\\Users\\alexy\\.cmdstan\\RTools40\\mingw64\\bin",
+    "C:\\Users\\alexy\\.cmdstan\\RTools40\\usr\\bin",
+    "C:\\Users\\alexy\\.cmdstan\\cmdstan-2.36.0\\stan\\lib\\stan_math\\lib\\tbb"
+]
 
 DATA_DIR = PROJ_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
