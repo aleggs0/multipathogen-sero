@@ -1,7 +1,7 @@
 data {
-    int<lower=0> N;                         // Number of individuals
-    int<lower=0> P;                         // Number of covariates
-    int<lower=0> n_rows;                    // Number of data rows
+    int<lower=1> N;                         // Number of individuals
+    int<lower=1> P;                         // Number of covariates
+    int<lower=1> n_rows;                    // Number of data rows
     vector[n_rows] T_L;                     // Left truncation times
     vector[n_rows] T_R;                     // Right endpoint times (event or censoring)
     array[n_rows] int<lower=0, upper=1> event;    // Event indicator: 1 if event, 0 if right-censored
