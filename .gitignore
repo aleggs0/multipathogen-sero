@@ -187,3 +187,7 @@ cython_debug/
 
 # VS Code settings
 .vscode/
+
+# Model fits
+model_fits/*
+!model_fits/.gitkeep
