@@ -25,7 +25,6 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 EXTERNAL_DATA_DIR = DATA_DIR / "external"
 
 STAN_DIR = SRC_DIR / "stan"
-COMPILED_STAN_DIR = STAN_DIR / "compiled"
 MODEL_FITS_DIR = PROJ_ROOT / "model_fits"
 
 REPORTS_DIR = PROJ_ROOT / "reports"
