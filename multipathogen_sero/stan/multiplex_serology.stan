@@ -54,7 +54,6 @@ data { // TODO: code the censoring times in a smarter way
     real <lower=0> time_to_immunity; // timescale for immunity to kick in
                                      // not scientific, just to make the likelihood continuous wrt latent infection times 
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
-    real <lower=0> relative_tolerance; // Relative tolerance for numerical integration (the default caused exceptions)
 }
 
 transformed data {
@@ -142,7 +141,6 @@ model {
         array[indiv_num_infections] int indiv_infection_pathogen_ids_sorted = indiv_infection_pathogen_ids[indiv_infection_sorted_indices];
         vector[K] indiv_hazards = to_vector(baseline_hazards);
         for (k in 1:indiv_num_infections) {
-            // print("n,k,indiv_hazards: ", n, k, indiv_hazards);
             if (k==1) {
                 log_lik[n] += -sum(indiv_hazards)*(indiv_infection_time_vector_sorted[1] - indiv_birth_time); // Survival probability to first infection time
             } else {
@@ -170,7 +168,6 @@ model {
             log_lik[n] += -sum(indiv_hazards) * (censoring_times[indiv_noninfection_indices[1]] - interval_start); // Survival probability to the (common) censoring time
         }
     }
-    print("log_lik: ", log_lik);
     target += log_lik; // Sum log-likelihood contributions for all individuals
 }
 
@@ -202,7 +199,6 @@ generated quantities {
             array[indiv_num_infections] int indiv_infection_pathogen_ids_sorted = indiv_infection_pathogen_ids[indiv_infection_sorted_indices];
             vector[K] indiv_hazards = to_vector(baseline_hazards);
             for (k in 1:indiv_num_infections) {
-                // print("n,k,indiv_hazards: ", n, k, indiv_hazards);
                 if (k==1) {
                     log_lik[n] += -sum(indiv_hazards)*(indiv_infection_time_vector_sorted[1] - indiv_birth_time); // Survival probability to first infection time
                 } else {

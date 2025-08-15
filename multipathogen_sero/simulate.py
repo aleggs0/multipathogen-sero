@@ -19,7 +19,7 @@ def simulate_infections(
     interaction_mat: Optional[np.ndarray],
     t_max: float = 100,
     birth_times: Optional[np.ndarray] = None,
-    foi_max: Optional[np.ndarray] = None,
+    max_fois: Optional[np.ndarray] = None,
     random_seed: Optional[int] = None
 ) -> pd.DataFrame:
     """
@@ -31,7 +31,7 @@ def simulate_infections(
         interaction_mat (Optional[np.ndarray]): Interaction matrix for pathogens. The k,l entry indicates the effect of pathogen k on pathogen l.
         birth_times (Optional[np.ndarray]): Birth times for each individual. If None, individuals are assumed to be born at time 0.
         t_max (float): Maximum time for the simulation.
-        foi_max (Optional[np.ndarray]): Maximum force of infection values for each pathogen.
+        max_fois (Optional[np.ndarray]): Maximum force of infection values for each pathogen.
         random_seed (Optional[int]): Random seed for reproducibility.
     """
     if birth_times is None:
@@ -40,11 +40,11 @@ def simulate_infections(
         np.random.seed(random_seed)
     if interaction_mat is None:
         interaction_mat = np.ones((n_pathogens, n_pathogens))
-    if foi_max is None:
+    if max_fois is None:
         t_grid = np.linspace(0, t_max, 1000)
-        foi_max = np.array([foi_list[k](t_grid).max() for k in range(n_pathogens)])
-        foi_max *= 1.1  # leeway for discretization errors
-    assert foi_max is not None  # for type checkers
+        max_fois = np.array([foi_list[k](t_grid).max() for k in range(n_pathogens)])
+        max_fois *= 1.1  # leeway for discretization errors
+    assert max_fois is not None  # for type checkers
     
     infection_times = []
     for i in range(n_people):
@@ -61,12 +61,12 @@ def simulate_infections(
             while proposal_indices.size > 0:
                 # generate proposal times for each pathogen
                 proposal_times += np.random.exponential(
-                    1 / foi_max[proposal_indices] / susceptibility_factors[proposal_indices],
+                    1 / max_fois[proposal_indices] / susceptibility_factors[proposal_indices],
                     size=len(proposal_indices)
                 )
                 # thinning step
                 accept_probs = np.array(
-                    [foi_list[k](proposal_times[j]) / foi_max[k] for j, k in enumerate(proposal_indices)]
+                    [foi_list[k](proposal_times[j]) / max_fois[k] for j, k in enumerate(proposal_indices)]
                 )
                 accept_mask = np.random.uniform(0, 1, size=len(proposal_indices)) < accept_probs
                 # updates
@@ -93,6 +93,101 @@ def simulate_infections(
                 break
             susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
     return pd.DataFrame(infection_times, columns=['time', 'event', 'individual', 'pathogen'])
+
+
+def simulate_infections_seroreversion(
+    n_people: int,
+    n_pathogens: int,
+    foi_list: List[Callable[[Union[float, np.ndarray]], np.ndarray]],
+    birth_times: Optional[Union[np.ndarray, float]] = None,
+    end_times: Optional[Union[np.ndarray, float]] = None,
+    log_frailty_covariance: Optional[np.ndarray] = None,
+    interaction_mat: Optional[np.ndarray] = None,
+    seroreversion_rates: Optional[List[float]] = None,
+    max_fois: Optional[np.ndarray] = None,
+    random_seed: Optional[int] = None
+):
+    if birth_times is None:
+        birth_times = 0.0
+    elif not isinstance(birth_times, np.ndarray):
+        birth_times = np.full(n_people, birth_times, dtype=float)
+    if end_times is None:
+        end_times = 100.0
+    elif not isinstance(end_times, np.ndarray):
+        end_times = np.full(n_people, end_times, dtype=float)
+    if random_seed is not None:
+        np.random.seed(random_seed)
+    if interaction_mat is None:
+        interaction_mat = np.ones((n_pathogens, n_pathogens))
+    if log_frailty_covariance is None:
+        log_frailty_covariance = np.zeros((n_pathogens, n_pathogens))
+    if max_fois is None:
+        t_grid = np.linspace(0, end_times, 1000)
+        max_fois = np.array([foi_list[k](t_grid).max() for k in range(n_pathogens)])
+        max_fois *= 1.1  # leeway for discretization errors
+    assert max_fois is not None  # for type checkers
+    if seroreversion_rates is None:
+        seroreversion_rates = np.zeros(n_pathogens)
+    if len(foi_list) != n_pathogens:
+        raise ValueError("foi_list must have length equal to n_pathogens.")
+    if interaction_mat.shape != (n_pathogens, n_pathogens):
+        raise ValueError("interaction_mat must be a square matrix of size n_pathogens.")
+    if log_frailty_covariance.shape != (n_pathogens, n_pathogens):
+        raise ValueError("log_frailty_covariance must be a square matrix of size n_pathogens.")
+    if len(seroreversion_rates) != n_pathogens:
+        raise ValueError("seroreversion_rates must have length equal to n_pathogens.")
+    if birth_times.shape[0] != n_people:
+        raise ValueError("birth_times must have the same length as n_people.")
+    if end_times.shape[0] != n_people:
+        raise ValueError("end_times must have the same length as n_people.")
+    if len(max_fois) != n_pathogens:
+        raise ValueError("max_fois must have length equal to n_pathogens.")
+    
+    # run simulation
+    event_list = []
+    for i in range(n_people):
+        birth_time = birth_times[i]
+        end_time = end_times[i]
+        indiv_log_frailty = np.random.multivariate_normal(
+            np.zeros(n_pathogens), log_frailty_covariance
+        )
+        indiv_frailty = np.exp(indiv_log_frailty)
+        event_list.append((birth_time, 'birth', i + 1, 0))
+        t_current = birth_time
+        infection_status = np.zeros(n_pathogens, dtype=bool)  # Track infections for each pathogen
+        susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0) * indiv_frailty
+        max_total_rate = sum(max_fois)
+        while True:     # simulate until t_max reached or np.all(infection_status)
+            # poisson process
+            t_current += np.random.exponential(1 / max_total_rate)
+            if t_current > end_time:
+                break
+            # thinning
+            current_rates = [
+                foi(t_current) * factor if not k_infected else seroreversion_rate
+                for foi, factor, seroreversion_rate, k_infected
+                in zip(foi_list, susceptibility_factors, seroreversion_rates, infection_status)
+            ]
+            event_pathogen = np.searchsorted(np.cumsum(current_rates), np.random.uniform(0, max_total_rate))
+            if event_pathogen == n_pathogens:  # reject
+                continue
+            elif infection_status[event_pathogen] == 1:  # seroreversion
+                infection_status[event_pathogen] = 0
+                event_list.append((t_current, 'seroreversion', i + 1, event_pathogen + 1))
+            else:  # seroconversion
+                infection_status[event_pathogen] = 1
+                event_list.append((t_current, 'seroconversion', i + 1, event_pathogen + 1))
+            # update current rates
+            susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0) * indiv_frailty
+            max_total_rate = sum(
+                max_foi * factor if not k_infected else seroreversion_rate
+                for max_foi, factor, seroreversion_rate, k_infected
+                in zip(max_fois, susceptibility_factors, seroreversion_rates, infection_status)
+            )
+            if max_total_rate == 0:
+                break
+        event_list.append((end_time, 'censoring', i + 1, 0))
+    return pd.DataFrame(event_list, columns=['time', 'event', 'individual', 'pathogen'])
 
 
 def simulate_infections_survivor(
@@ -227,7 +322,7 @@ def simulate_infections_discrete(
 
 def simulation_to_regression_df(
     simulation_df: pd.DataFrame,
-    k_infector: Optional[int] = None,
+    k_infector: Optional[int] = None,  # 1-indexed
     t_max: float = 100
 ) -> pd.DataFrame:
 
@@ -311,7 +406,7 @@ def simulation_to_survey_long(
     Returns:
     pd.DataFrame: Wide DataFrame with columns 'time', 'individual', and serostatus for each pathogen.
     """
-    n_pathogens = simulation_df['pathogen'].dropna().astype(int).max() + 1
+    n_pathogens = simulation_df['pathogen'].dropna().astype(int).max()
     individuals = simulation_df['individual'].unique()
     individuals.sort()
     # Normalize survey_times to a dict: individual -> survey_time
@@ -363,6 +458,59 @@ def survey_long_to_wide(
     survey_df.columns.name = None  # Remove the name of the columns index
     survey_df.columns = [f'serostatus_{col}' if isinstance(col, int) else col for col in survey_df.columns]
     return survey_df
+
+
+def simulation_to_survey_wide(
+    simulation_df: pd.DataFrame,
+    survey_times: Dict[int, ArrayLike]
+) -> pd.DataFrame:
+    """
+    Convert a simulation DataFrame to a wide-format survey DataFrame.
+    This function first converts the simulation DataFrame to long format and then to wide format.
+    """
+    pathogens = simulation_df[simulation_df['event']=='seroconversion']['pathogen'].dropna().astype(int)
+    if min(pathogens) < 1:
+        raise ValueError("Pathogen indices must start from 1.")
+    n_pathogens = pathogens.max()
+    required_columns = {'time', 'event', 'individual', 'pathogen'}
+    if not required_columns.issubset(simulation_df.columns):
+        raise ValueError(f"simulation_df must contain the following columns: {required_columns}")
+    simulation_df.sort_values(by=['individual', 'time'], inplace=True)
+    survey_wide_list = []
+    for ind, ind_survey_times in survey_times.items():
+        ind_survey_times.sort()
+        ind_events = simulation_df[simulation_df['individual'] == ind].reset_index(drop=True)
+        if ind_events.empty:
+            raise ValueError(f"Individual {ind} has no events in the simulation DataFrame.")
+        # 'birth' event as the first event
+        if ind_events['event'].iloc[0] != 'birth':
+            raise ValueError(f"Individual {ind} must have a 'birth' event as the first event.")
+        infection_status = np.zeros(n_pathogens, dtype=bool)
+        ind_events_idx = 1  # Look at the event after 'birth'
+        for ind_survey_time in ind_survey_times:
+            while ind_events_idx < len(ind_events):
+                # go through ind_events and update infection_status
+                if ind_events['time'].iloc[ind_events_idx] > ind_survey_time:
+                    break
+                if ind_events['event'].iloc[ind_events_idx] == 'seroconversion':
+                    infection_status[ind_events['pathogen'].iloc[ind_events_idx] - 1] = True
+                elif ind_events['event'].iloc[ind_events_idx] == 'seroreversion':
+                    infection_status[ind_events['pathogen'].iloc[ind_events_idx] - 1] = False
+                elif ind_events['event'].iloc[ind_events_idx] == 'censoring':
+                    if ind_events['time'].iloc[ind_events_idx] < ind_survey_times[-1]:
+                        raise ValueError(
+                            f"Individual {ind} has a censoring event before the last survey time."
+                        )
+                else:
+                    raise ValueError(
+                        f"Unexpected event {ind_events['event'].iloc[ind_events_idx]} for individual {ind}."
+                    )
+                ind_events_idx += 1
+            survey_wide_list.append((ind, ind_survey_time, *infection_status.astype(int)))
+    return pd.DataFrame(
+        survey_wide_list,
+        columns=['individual', 'time'] + [f'serostatus_{k}' for k in range(1, n_pathogens + 1)]
+    )
 
 
 # baseline hazards / survivor functions
