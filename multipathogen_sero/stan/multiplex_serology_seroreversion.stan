@@ -145,7 +145,7 @@ transformed parameters {
                     q_matrix[i,j] = baseline_hazards[k]; // Transition rate from i to j
                     for (l in 1:K) {
                         if (infection_state_i[l] == 1) {
-                            q_matrix[i,j] *= exp(beta_matrix[k,l]); // Apply the hazard ratio
+                            q_matrix[i,j] *= exp(beta_matrix[l,k]); // Apply the hazard ratio
                         }
                     }
                     row_sum += q_matrix[i,j];
@@ -158,7 +158,7 @@ transformed parameters {
     // matrix[num_infection_states,num_infection_states] q_power_3 = q_power_2 * q_matrix; // Cube the transition rate matrix
     // matrix[num_infection_states,num_infection_states] q_power_4 = q_power_3 * q_matrix; // Raise the transition rate matrix to the fourth power
     // matrix[num_infection_states,num_infection_states] eye = diag_matrix(rep_vector(1.0, num_infection_states)); // Identity matrix
-    matrix[num_infection_states,num_infection_states] transition_matrix = matrix_exp(interval * q_matrix);
+    // matrix[num_infection_states,num_infection_states] transition_matrix = matrix_exp(interval * q_matrix);
 }
 
 model {
@@ -194,14 +194,12 @@ model {
                 next_state_index = infection_state_to_index(next_serostatus);
                 next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
                 next_infection_state_vector[next_state_index,1] = 1.0;
-                log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
-                // log_lik[i] += log(
-                //     scale_matrix_exp_multiply(
-                //         next_test_time - prev_test_time, // Time difference between tests
-                //         q_matrix, // Transition rate matrix to be exponentiated
-                //         prev_infection_state_vector // initial probability distribution
-                //     )[next_state_index,1]
-                // );
+                // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
+                log_lik[i] += log(
+                    matrix_exp(
+                        q_matrix * (next_test_time - prev_test_time) // q_matrix times time difference between tests
+                    )[prev_state_index, next_state_index]
+                );
                 // log_lik[i] += log(transition_prob_approx(
                 //     prev_state_index,
                 //     next_state_index,
@@ -247,14 +245,12 @@ generated quantities {
                 next_state_index = infection_state_to_index(next_serostatus);
                 next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
                 next_infection_state_vector[next_state_index,1] = 1.0;
-                log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
-                // log_lik[i] += log(
-                //     scale_matrix_exp_multiply(
-                //         next_test_time - prev_test_time, // Time difference between tests
-                //         q_matrix, // Transition rate matrix to be exponentiated
-                //         prev_infection_state_vector // initial probability distribution
-                //     )[next_state_index,1]
-                // );
+                // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
+                log_lik[i] += log(
+                    matrix_exp(
+                        q_matrix * (next_test_time - prev_test_time) // q_matrix times time difference between tests
+                    )[prev_state_index, next_state_index]
+                );
                 // log_lik[i] += log(transition_prob_approx(
                 //     prev_state_index,
                 //     next_state_index,
