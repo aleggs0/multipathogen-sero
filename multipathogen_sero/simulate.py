@@ -45,7 +45,7 @@ def simulate_infections(
         max_fois = np.array([foi_list[k](t_grid).max() for k in range(n_pathogens)])
         max_fois *= 1.1  # leeway for discretization errors
     assert max_fois is not None  # for type checkers
-    
+
     infection_times = []
     for i in range(n_people):
         birth_time = birth_times[i]
@@ -55,7 +55,7 @@ def simulate_infections(
         susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
         while True:     # simulate until t_max reached or np.all(infection_status)
             proposal_indices = np.where(infection_status == 0)[0]   # Indices of pathogens not yet infected
-            proposal_times = np.full(len(proposal_indices), t_current, dtype=float) # Initialize proposal times for pathogens not yet infected
+            proposal_times = np.full(len(proposal_indices), t_current, dtype=float)  # Initialize proposal times for pathogens not yet infected
             earliest_accepted_proposal = np.inf
             earliest_accepted_proposal_index = None
             while proposal_indices.size > 0:
@@ -142,7 +142,7 @@ def simulate_infections_seroreversion(
         raise ValueError("end_times must have the same length as n_people.")
     if len(max_fois) != n_pathogens:
         raise ValueError("max_fois must have length equal to n_pathogens.")
-    
+
     # run simulation
     event_list = []
     for i in range(n_people):
@@ -193,7 +193,7 @@ def simulate_infections_seroreversion(
 def simulate_infections_survivor(
     n_people: int,
     n_pathogens: int,
-    survivor_list: List[Callable[[float],np.ndarray]],
+    survivor_list: List[Callable[[float], np.ndarray]],
     interaction_mat: Optional[np.ndarray] = None,
     time_precision: float = 0.001,
     t_max: float = 100,
@@ -223,7 +223,7 @@ def simulate_infections_survivor(
             susceptibility_factors = np.prod(interaction_mat[infection_status], axis=0)
             proposal_indices = np.where(infection_status == 0)[0]  # Indices of pathogens not yet infected
             proposal_times = np.full(len(proposal_indices), np.inf)
-            for j,k in enumerate(proposal_indices):
+            for j, k in enumerate(proposal_indices):
                 current_survivor = survivor_list[k](t_current)
                 proposal_quantile = np.random.uniform(0, 1)
                 proposal_survivor = (proposal_quantile ** (1 / susceptibility_factors[k])) * current_survivor
@@ -376,8 +376,8 @@ def simulation_to_regression_df(
 
         # Add event column: 1 if seroconversion for k_infector occurs at stop_event, else 0
         regression_df_for_pathogen_k['event'] = (
-            (regression_df_for_pathogen_k['stop_event'] == 'seroconversion') &
-            (regression_df_for_pathogen_k['stop_event_pathogen'] == k_infector)
+            (regression_df_for_pathogen_k['stop_event'] == 'seroconversion')
+            & (regression_df_for_pathogen_k['stop_event_pathogen'] == k_infector)
         ).astype(int)
 
         # Drop unnecessary columns
@@ -440,7 +440,7 @@ def simulation_to_survey_long(
                 records.append((survey_time, ind, k, serostatus))
     survey_df = pd.DataFrame(records, columns=['time', 'individual', 'pathogen', 'serostatus'])
     return survey_df
-                    
+
 
 def survey_long_to_wide(
     survey_df: pd.DataFrame
@@ -468,7 +468,7 @@ def simulation_to_survey_wide(
     Convert a simulation DataFrame to a wide-format survey DataFrame.
     This function first converts the simulation DataFrame to long format and then to wide format.
     """
-    pathogens = simulation_df[simulation_df['event']=='seroconversion']['pathogen'].dropna().astype(int)
+    pathogens = simulation_df[simulation_df['event'] == 'seroconversion']['pathogen'].dropna().astype(int)
     if min(pathogens) < 1:
         raise ValueError("Pathogen indices must start from 1.")
     n_pathogens = pathogens.max()
@@ -517,20 +517,30 @@ def simulation_to_survey_wide(
 def get_gaussian_foi(mu, sigma, a):
     """Generate a Gaussian function for the force of infection."""
     return lambda t: np.exp(-((t - mu) ** 2) / (2 * sigma ** 2)) * a
+
+
 def get_exponential_foi(lam, a):
     """Generate an exponential function for the force of infection."""
     return lambda t: np.exp(-lam * t) * a
+
+
 def get_constant_foi(a):
     """Generate a constant force of infection."""
     return lambda t: np.full_like(t, a, dtype=float)
+
+
 def get_gaussian_foi_survivor(mu, sigma, a):
     norm = a * sigma * np.sqrt(np.pi / 2)
     return lambda t: np.exp(
         -norm * (erf((t - mu) / (np.sqrt(2) * sigma)) - erf((-mu) / (np.sqrt(2) * sigma)))
     )
+
+
 def get_exponential_foi_survivor(lam, a):
     def S(t):
         return np.exp(-a * (1 - np.exp(-lam * t)) / lam)
     return S
+
+
 def get_constant_foi_survivor(a):
     return lambda t: np.exp(-a * t)
