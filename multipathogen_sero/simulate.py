@@ -4,13 +4,14 @@ This module provides functions to simulate infections using a Poisson process wi
 simulate infections from a survivor function, and create serosurveys from the simulation results.
 """
 
+import os
+import json
 from typing import Callable, Dict, Union, List, Optional
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
 from scipy.optimize import root_scalar
 from scipy.special import erf
-
 
 def simulate_infections(
     n_people: int,
