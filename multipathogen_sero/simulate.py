@@ -4,14 +4,64 @@ This module provides functions to simulate infections using a Poisson process wi
 simulate infections from a survivor function, and create serosurveys from the simulation results.
 """
 
-import os
-import json
+
 from typing import Callable, Dict, Union, List, Optional
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.optimize import root_scalar
 from scipy.special import erf
+
+
+def generate_beta_matrix(
+    n_pathogens: int,
+    interaction_prob: float,
+    beta_scale: float = 1.0,
+    random_seed: Optional[int] = None
+) -> np.ndarray:
+    """
+    Generate an interaction matrix using a spike-and-slab prior approach.
+    Parameters:
+        n_pathogens (int): Number of pathogens.
+        interaction_prob (float): Probability of interaction between any two pathogens.
+        beta_scale (float): Standard deviation of the normal distribution for interaction strengths.
+        random_seed (Optional[int]): Random seed for reproducibility.
+    Returns:
+        np.ndarray: Interaction matrix of shape (n_pathogens, n_pathogens).
+    """
+    interaction_indicator = np.random.binomial(1, 0.1, size=(n_pathogens, n_pathogens))
+    interaction_indicator[np.arange(n_pathogens), np.arange(n_pathogens)] = 0  
+    beta_mat = np.random.normal(0, 1, size=(n_pathogens, n_pathogens)) * interaction_indicator
+    return beta_mat
+    # Interaction matrix
+
+
+def plot_beta_matrix(beta_mat: np.ndarray):
+    n_pathogens = beta_mat.shape[0]
+    fig, ax = plt.subplots()
+    im = ax.imshow(np.log(beta_mat), cmap='viridis', aspect='auto')
+    ax.set_ylabel('Pathogen (seropositive)')
+    ax.set_xlabel('Pathogen (susceptible)')
+    ax.set_xticks(np.arange(n_pathogens))
+    ax.set_xticklabels(np.arange(0, n_pathogens))
+    ax.set_yticks(np.arange(n_pathogens))
+    ax.set_yticklabels(np.arange(0, n_pathogens))
+    fig.colorbar(im, ax=ax, label='log Interaction Strength')
+    ax.set_title('Interaction Matrix Heatmap')
+    return fig
+
+
+def generate_uniform_birth_times(
+    n_people: int,
+    t_min: float,
+    t_max: float,
+    random_seed: Optional[int] = None
+):
+    if random_seed is not None:
+        np.random.seed(random_seed)
+    return np.random.uniform(t_min, t_max, size=n_people)
+
 
 def simulate_infections(
     n_people: int,
@@ -103,6 +153,7 @@ def simulate_infections_seroreversion(
     birth_times: Optional[Union[np.ndarray, float]] = None,
     end_times: Optional[Union[np.ndarray, float]] = None,
     log_frailty_covariance: Optional[np.ndarray] = None,
+    beta_mat: Optional[np.ndarray] = None,
     interaction_mat: Optional[np.ndarray] = None,
     seroreversion_rates: Optional[List[float]] = None,
     max_fois: Optional[np.ndarray] = None,
@@ -118,7 +169,11 @@ def simulate_infections_seroreversion(
         end_times = np.full(n_people, end_times, dtype=float)
     if random_seed is not None:
         np.random.seed(random_seed)
-    if interaction_mat is None:
+    if interaction_mat is not None and beta_mat is not None:
+        raise ValueError("Specify only one of interaction_mat or beta_mat.")
+    elif beta_mat is not None:
+        interaction_mat = np.exp(beta_mat)
+    elif interaction_mat is None:
         interaction_mat = np.ones((n_pathogens, n_pathogens))
     if log_frailty_covariance is None:
         log_frailty_covariance = np.zeros((n_pathogens, n_pathogens))

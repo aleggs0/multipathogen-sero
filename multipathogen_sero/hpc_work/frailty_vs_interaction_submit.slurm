@@ -11,15 +11,16 @@
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL
-#SBATCH --output=/homes/ayan/log
-#SBATCH --error=/homes/ayan/log
+#SBATCH --output=/homes/ayan/log/%A_%a.out
+#SBATCH --error=/homes/ayan/log/%A_%a.err
 
 idx=${SLURM_ARRAY_TASK_ID}
 
 echo $SLURM_ARRAY_TASK_ID
-batch=$(sed -n "${idx}p" sim_batch.txt)
 
+cd ~/sero/multipathogen-sero/
 module load conda
+conda init bash
+source ~/.bashrc
 conda activate multipathogen-sero
-cd multipathogen-sero/
 python multipathogen_sero/hpc_work/frailty_vs_interaction.py
