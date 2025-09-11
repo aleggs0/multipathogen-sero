@@ -33,7 +33,7 @@ EXPT_SETTINGS = {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
         "seroreversion_rates": [0.1, 0.1],
-        "log_frailty_covariance": 1,
+        "log_frailty_variance": 1,
         "beta_mat": [[0, 0.5], [-0.5, 0]],
         "seed": 42
     },
@@ -68,19 +68,24 @@ save_metadata_json(OUTPUT_DIR, EXPT_SETTINGS)
 # simulate the data
 birth_times = generate_uniform_birth_times(
     n_people=EXPT_SETTINGS["train_data"]["n_people"],
+    t_min=EXPT_SETTINGS["train_data"]["t_min"],
     t_max=EXPT_SETTINGS["train_data"]["t_max"],
     random_seed=EXPT_SETTINGS["train_data"]["seed"]
 )
 foi_list = [
     get_constant_foi(a=baseline_hazard) for baseline_hazard in EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"]
 ]
+log_frailty_covariance = (
+    EXPT_SETTINGS["ground_truth_params"]["log_frailty_variance"]
+    * np.eye(EXPT_SETTINGS["ground_truth_params"]["n_pathogens"])
+)
 simulate_infections_seroreversion_df = simulate_infections_seroreversion(
     n_people=EXPT_SETTINGS["train_data"]["n_people"],
     n_pathogens=EXPT_SETTINGS["ground_truth_params"]["n_pathogens"],
     foi_list=foi_list,
     birth_times=birth_times,
     end_times=EXPT_SETTINGS["train_data"]["t_max"],
-    log_frailty_covariance=EXPT_SETTINGS["ground_truth_params"]["log_frailty_covariance"],
+    log_frailty_covariance=log_frailty_covariance,
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -90,7 +95,7 @@ survey_every = EXPT_SETTINGS["train_data"]["survey_every"]
 survey_times = {
     # i + 1: survey_every * np.arange(np.floor(birth_times[i]/survey_every)+1, np.floor(t_max/survey_every)+1)
     i + 1: np.insert(
-        survey_every * np.arange(np.floor(birth_times[i] / survey_every) + 1, np.floor(EXPT_SETTINGS["data"]["t_max"] / survey_every) + 1),
+        survey_every * np.arange(np.floor(birth_times[i] / survey_every) + 1, np.floor(EXPT_SETTINGS["train_data"]["t_max"] / survey_every) + 1),
         0, birth_times[i]
     )
     for i in range(EXPT_SETTINGS["train_data"]["n_people"])

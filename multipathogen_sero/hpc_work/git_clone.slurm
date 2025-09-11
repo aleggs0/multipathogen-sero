@@ -13,7 +13,8 @@
 #SBATCH --output=/homes/ayan/log/git_pull_%A.out
 #SBATCH --error=/homes/ayan/log/git_pull_%A.err
 
+cd ~/sero
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/github
-cd ~/sero/multipathogen-sero/
-git pull
+rm -rf multipathogen-sero
+git clone git@github.com:aleggs0/multipathogen-sero.git
