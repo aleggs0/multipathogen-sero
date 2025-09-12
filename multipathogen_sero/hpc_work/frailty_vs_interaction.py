@@ -201,7 +201,7 @@ end_time = time.time()
 print(f"Fitting time: {end_time - start_time} seconds")
 
 fit_frailty.save_csvfiles(OUTPUT_DIR_FRAILTY)
-print(save_fit_diagnose(fit_frailty, OUTPUT_DIR / "pairwise_serology_seroreversion_frailty"))
+print(save_fit_diagnose(fit_frailty, OUTPUT_DIR_FRAILTY))
 
 # repeat for other fit
 model_no_frailty = CmdStanModel(
@@ -220,7 +220,7 @@ fit_no_frailty = model_no_frailty.sample(
 end_time = time.time()
 print(f"Fitting time: {end_time - start_time} seconds")
 fit_no_frailty.save_csvfiles(OUTPUT_DIR_NO_FRAILTY)
-print(save_fit_diagnose(fit_no_frailty, OUTPUT_DIR / "pairwise_serology_seroreversion"))
+print(save_fit_diagnose(fit_no_frailty, OUTPUT_DIR_NO_FRAILTY))
 
 # save relevant plots
 idata_frailty = az.from_cmdstanpy(fit_frailty)
@@ -283,4 +283,3 @@ elpd difference (frailty - no frailty): {elpd_diff} (SE: {se_elpd_diff})
 """
 with open(OUTPUT_DIR / "elpd_report.txt", "w") as f:
     f.write(elpd_report)
-    

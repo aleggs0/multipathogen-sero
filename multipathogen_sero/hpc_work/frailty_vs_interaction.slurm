@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=16G
-#SBATCH --time=2:00:00
+#SBATCH --time=3:00:00
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL

@@ -2,16 +2,14 @@ import os
 import json
 import glob
 import numpy as np
-import pandas as pd
 from scipy.special import logsumexp
 import matplotlib.pyplot as plt
 import arviz as az
 import warnings
+from multipathogen_sero.config import MODEL_FITS_DIR
 
-from multipathogen_sero.config import PROJ_ROOT, MODEL_FITS_DIR
 
-
-def save_fit_diagnose(fit, fit_dir, filename="fit_diagnose.txt"):
+def save_fit_diagnose(fit, save_dir, filename="fit_diagnose.txt"):
     """
     Save the diagnostics from CmdStanPy fit.diagnose() to a text file.
 
@@ -23,7 +21,7 @@ def save_fit_diagnose(fit, fit_dir, filename="fit_diagnose.txt"):
         Path to the output file.
     """
     diagnose_str = fit.diagnose()
-    with open(fit_dir / filename, "w") as f:
+    with open(save_dir / filename, "w") as f:
         f.write(diagnose_str)
     return diagnose_str
 
