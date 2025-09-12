@@ -6,7 +6,6 @@ simulate infections from a survivor function, and create serosurveys from the si
 
 
 from typing import Callable, Dict, Union, List, Optional
-import warnings
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
@@ -194,8 +193,6 @@ def simulate_infections_seroreversion(
         if log_frailty_covariance is not None or frailty_scale is not None:
             raise ValueError("If frailty_distribution is None, both log_frailty_covariance and frailty_scale must be None.")
     elif frailty_distribution == 'lognormal':
-        warnings.warn("lognormal frailties do not have expectation 1", UserWarning)
-        ## TODO: use copulas instead for dependent frailties with expectation 1?
         if log_frailty_covariance is None:
             raise ValueError("If frailty_distribution is 'lognormal', either log_frailty_covariance must be specified.")
         if frailty_scale is not None:
@@ -223,7 +220,7 @@ def simulate_infections_seroreversion(
         end_time = end_times[i]
         if frailty_distribution == 'lognormal':
             indiv_log_frailty = np.random.multivariate_normal(
-                np.zeros(n_pathogens), log_frailty_covariance
+                -0.5 * np.diag(log_frailty_covariance), log_frailty_covariance
             )
             indiv_frailty = np.exp(indiv_log_frailty)
         elif frailty_distribution == 'gamma':

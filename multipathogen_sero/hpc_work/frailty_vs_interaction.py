@@ -34,7 +34,7 @@ EXPT_SETTINGS = {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
         "seroreversion_rates": [0.1, 0.1],
-        "frailty_scale": 0.5,
+        "log_frailty_std": 0.5,
         "beta_mat": [[0, 0.5], [0.5, 0]],
         "seed": 42
     },
@@ -57,8 +57,8 @@ EXPT_SETTINGS = {
         "log_baseline_hazard_scale": 1,
         "beta_scale": 1.0,
         "seroreversion_rate_scale": 1.0,
-        "frailty_scale_scale": 1.0,  # only when frailty is modelled
-        "n_frailty_samples": 10,  # number of Monte Carlo samples for integration over frailty
+        "log_frailty_std_scale": 1.0,  # only when frailty is modelled
+        "n_frailty_samples": 10**ARRAY_INDEX,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
         "iter_sampling": 500,
         "iter_warmup": 500,
@@ -73,6 +73,10 @@ save_metadata_json(OUTPUT_DIR, EXPT_SETTINGS)
 # define the parameter grid (simulation params, random seed)
 
 # simulate the data
+log_frailty_covariance = (
+    EXPT_SETTINGS["ground_truth_params"]["log_frailty_std"] ** 2
+    * np.eye(EXPT_SETTINGS["ground_truth_params"]["n_pathogens"])
+)
 birth_times = generate_uniform_birth_times(
     n_people=EXPT_SETTINGS["train_data"]["n_people"],
     t_min=EXPT_SETTINGS["train_data"]["t_min"],
@@ -90,8 +94,8 @@ infections_df = simulate_infections_seroreversion(
     foi_list=foi_list,
     birth_times=birth_times,
     end_times=EXPT_SETTINGS["train_data"]["t_max"],
-    frailty_distribution="gamma",
-    frailty_scale=EXPT_SETTINGS["ground_truth_params"]["frailty_scale"],
+    frailty_distribution="lognormal",
+    log_frailty_covariance=log_frailty_covariance,
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -126,8 +130,8 @@ infections_df_test = simulate_infections_seroreversion(
     foi_list=foi_list,
     birth_times=birth_times_test,
     end_times=EXPT_SETTINGS["test_data"]["t_max"],
-    frailty_distribution="gamma",
-    frailty_scale=EXPT_SETTINGS["ground_truth_params"]["frailty_scale"],
+    frailty_distribution="lognormal",
+    log_frailty_covariance=log_frailty_covariance,
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -166,7 +170,7 @@ stan_data = {
     "log_baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["log_baseline_hazard_scale"],
     "beta_scale": EXPT_SETTINGS["inference_params"]["beta_scale"],
     "seroreversion_rate_scale": EXPT_SETTINGS["inference_params"]["seroreversion_rate_scale"],
-    "frailty_scale_scale": EXPT_SETTINGS["inference_params"]["frailty_scale_scale"]
+    "log_frailty_std_scale": EXPT_SETTINGS["inference_params"]["log_frailty_std_scale"]
 }
 model = CmdStanModel(
     stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty.stan")

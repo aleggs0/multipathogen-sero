@@ -119,7 +119,6 @@ def posterior_plot(
                 for i, v in enumerate(true_val):
                     ax = axes[ax_idx]
                     ax.axvline(v, color='red', linestyle='--')
-                    ax.legend(loc='best')
                     # Check coverage
                     if hdi_lower is not None and hdi_upper is not None:
                         # If variable is multidimensional, summary index is (var, component)

@@ -10,8 +10,8 @@
 ##SBATCH --export=ALL
 
 rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/log/ ayan@gate.stats.ox.ac.uk:~/log/
-rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/sero/multipathogen-sero/model_fits/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/model-fits/
+rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/sero/multipathogen-sero/model_fits/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/model_fits/
 
 ## retrieve these by using rsync to copy from gate to local:
 ## rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" ayan@gate.stats.ox.ac.uk:~/log/ /home/ayan/sero/multipathogen-sero/model_fits/log/
-## rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/model-fits/ /home/ayan/sero/multipathogen-sero/model_fits/
+## rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/model_fits/ /home/ayan/sero/multipathogen-sero/model_fits/
