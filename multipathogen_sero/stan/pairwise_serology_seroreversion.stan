@@ -184,31 +184,40 @@ model {
 }
 
 generated quantities {
-    array[N_test] real log_lik_test;
+    array[N_test] real log_lik_test = rep_array(0.0, N_test);
     {
-        int obs_idx = 1;
+        int obs_idx = 1; // Index for the current test
         array[K] int prev_serostatus;
         real prev_obs_time;
         int prev_state_index;
+        // matrix[num_infection_states,1] prev_infection_state_vector;
         array[K] int next_serostatus;
         real next_obs_time;
         int next_state_index;
+        matrix[num_infection_states,1] next_infection_state_vector;
         matrix[num_infection_states,num_infection_states] q_matrix;
         q_matrix = baseline_seroconversion_rate_matrix + seroreversion_rate_matrix;
         for (i in 1:N_test) {
-            log_lik_test[i] = 0.0;
-            prev_serostatus = serostatus_test[obs_idx,];
-            prev_obs_time = obs_times_test[obs_idx];
+            prev_serostatus = serostatus_test[obs_idx,]; // Initial serostatus for the individual
+            prev_obs_time = obs_times_test[obs_idx]; // Initial test time for the individual
             prev_state_index = infection_state_to_index(prev_serostatus);
+            next_serostatus = serostatus_test[obs_idx+1,];
+            next_state_index = infection_state_to_index(next_serostatus);
+            next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
+            next_infection_state_vector[next_state_index,1] = 1.0; // Set the initial state vector
             obs_idx += 1;
             for (j in 1:num_obs_test[i]-1) {
-                next_serostatus = serostatus_test[obs_idx,];
+                // Get the current test time and serostatus
+                next_serostatus = serostatus_test[obs_idx];
                 next_obs_time = obs_times_test[obs_idx];
                 next_state_index = infection_state_to_index(next_serostatus);
+                next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
+                next_infection_state_vector[next_state_index,1] = 1.0;
+                // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
                 log_lik_test[i] += log(
-                    matrix_exp_multiply(
-                        q_matrix * (next_obs_time - prev_obs_time),
-                        rep_matrix(0.0, num_infection_states, 1)
+                    matrix_exp_multiply( //this is equivalent to getting the entry [prev_state_index, next_state_index] of the matrix exponential
+                        q_matrix * (next_obs_time - prev_obs_time), // q_matrix times time difference between tests
+                        next_infection_state_vector
                     )[prev_state_index,1]
                 );
                 prev_serostatus = next_serostatus;

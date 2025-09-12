@@ -48,14 +48,14 @@ EXPT_SETTINGS = {
         "seed": 42
     },
     "train_data": {
-        "n_people": 250,  # TODO: make this variable
+        "n_people": 2000,  # TODO: make this variable
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
-        "n_people": 250,
+        "n_people": 2000,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
