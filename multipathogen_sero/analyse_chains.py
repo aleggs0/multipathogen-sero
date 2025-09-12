@@ -1,5 +1,5 @@
 import os
-import pickle
+import json
 import glob
 import numpy as np
 import pandas as pd
@@ -52,29 +52,27 @@ def basic_summary(inference_data, suppress_warnings=True):
 
 
 def trace_plot(inference_data, var_names=None, save_dir=None):
-    """Plot trace for selected variables and save image in fit_dir/analysis/."""
+    """Plot trace for selected variables and save image in save_dir/."""
     axes = az.plot_trace(inference_data, var_names=var_names)
     if save_dir is not None:
-        analysis_dir = os.path.join(fit_dir, "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        img_path = os.path.join(analysis_dir, "trace_plot.png")
+        os.makedirs(save_dir, exist_ok=True)
+        img_path = os.path.join(save_dir, "trace_plot.png")
         plt.gcf().savefig(img_path)
     return axes
 
 
-def pairs_plot(inference_data, var_names=None, save_dir=None, figsize=None):
-    """Plot trace for selected variables and save image in fit_dir/analysis/."""
+def pairs_plot(inference_data, var_names=["betas", "log_frailty_std"], save_dir=None, figsize=None):
+    """Plot trace for selected variables and save image in save_dir/."""
     axes = az.plot_pair(
         inference_data,
-        var_names=["betas", "frailty_scale"],  # replace with your variable names
+        var_names=var_names,
         # kind='scatter',      # or 'kde' for density
         # marginals=True,      # show marginal distributions
         figsize=figsize
     )
     if save_dir is not None:
-        analysis_dir = os.path.join(fit_dir, "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        img_path = os.path.join(analysis_dir, "pairs_plot.png")
+        os.makedirs(save_dir, exist_ok=True)
+        img_path = os.path.join(save_dir, "pairs_plot.png")
         plt.gcf().savefig(img_path)
     return axes
 
@@ -128,7 +126,7 @@ def posterior_plot(
                         except Exception:
                             lower = hdi_lower
                             upper = hdi_upper
-                        coverage_dict[var].append(lower <= v <= upper)
+                        coverage_dict[var].append(int(lower <= v <= upper))
                     else:
                         coverage_dict[var].append(None)
                     ax_idx += 1
@@ -139,11 +137,17 @@ def posterior_plot(
                     ax_idx += np.prod(shape[1:]) if len(shape) > 1 else 1
                 except Exception:
                     ax_idx += 1
+    else:
+        coverage_dict = None
+    plt.subplots_adjust(hspace=0.4)
     if save_dir is not None:
-        analysis_dir = os.path.join(save_dir, "analysis")
-        os.makedirs(analysis_dir, exist_ok=True)
-        img_path = os.path.join(analysis_dir, "posterior_plot.png")
+        os.makedirs(save_dir, exist_ok=True)
+        img_path = os.path.join(save_dir, "posterior_plot.png")
         plt.gcf().savefig(img_path)
+        if ground_truth is not None:
+            coverage_path = os.path.join(save_dir, "coverage.json")
+            with open(coverage_path, "w") as f:
+                json.dump(coverage_dict, f, indent=4)
     return axes, coverage_dict
 
 
@@ -207,7 +211,7 @@ def compare_using_test_set(
 
 
 def plot_energy_vs_lp_and_params(
-    inference_data, var_names=["betas", "frailty_scale"]
+    inference_data, var_names=["betas", "log_frailty_std"]
 ):
     """
     Plot energy (from sample_stats) against lp (from sample_stats),

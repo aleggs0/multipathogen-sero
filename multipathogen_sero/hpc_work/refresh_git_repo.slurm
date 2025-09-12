@@ -10,8 +10,6 @@
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL
-#SBATCH --output=/homes/ayan/log/git_pull_%A.out
-#SBATCH --error=/homes/ayan/log/git_pull_%A.err
 
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/github
