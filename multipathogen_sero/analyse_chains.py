@@ -66,7 +66,7 @@ def pairs_plot(inference_data, var_names=None, save_dir=None, figsize=None):
     """Plot trace for selected variables and save image in fit_dir/analysis/."""
     axes = az.plot_pair(
         inference_data,
-        var_names=["betas", "frailty_variance"],  # replace with your variable names
+        var_names=["betas", "frailty_scale"],  # replace with your variable names
         # kind='scatter',      # or 'kde' for density
         # marginals=True,      # show marginal distributions
         figsize=figsize
@@ -207,58 +207,61 @@ def compare_using_test_set(
     return elpd_diff, se_diff
 
 
-def energy_pairs_plots(
-    inference_data,
-    var_names=["lp__", "betas", "frailty_variance"]
+def plot_energy_vs_lp_and_params(
+    inference_data, var_names=["betas", "frailty_scale"]
 ):
-    """Plot energy pairs plots for selected variables and save image in fit_dir/analysis/.
-    Warning: this is not very robust, only intended for exploring in a notebook."""
+    """
+    Plot energy (from sample_stats) against lp (from sample_stats),
+    and against each parameter in var_names (from posterior).
+    """
+    energy = inference_data.sample_stats["energy"].values.flatten()
+    lp = inference_data.sample_stats["lp"].values.flatten()
+
+    # Plot energy vs lp
+    plt.figure(figsize=(5, 5))
+    plt.scatter(energy, lp, alpha=0.5)
+    plt.xlabel("energy")
+    plt.ylabel("lp")
+    plt.title("energy vs lp")
+    plt.show()
 
     for param in var_names:
+        if param not in inference_data.posterior:
+            continue
         values = inference_data.posterior[param]
         param_dims = values.dims[2:]  # skip chain and draw
         param_coords = {dim: values.coords[dim].values for dim in param_dims}
-        ndim = len(param_dims)
+        arr = values.values  # shape: (chain, draw, ...)
+        arr_flat = arr.reshape(-1, *arr.shape[2:])
 
-        if ndim == 0:
+        if arr_flat.ndim == 1:
             # Scalar parameter
-            az.plot_pair(
-                inference_data,
-                var_names=[param, "energy__"],
-                kind="scatter",
-                marginals=True,
-                figsize=(5, 5),
-            )
-            plt.title(f"energy__ vs {param}")
+            plt.figure(figsize=(5, 5))
+            plt.scatter(energy, arr_flat, alpha=0.5)
+            plt.xlabel("energy")
+            plt.ylabel(param)
+            plt.title(f"energy vs {param}")
             plt.show()
-        elif ndim == 1:
+        elif arr_flat.ndim == 2:
             # 1D parameter (vector)
             dim = param_dims[0]
-            for coord in param_coords[dim]:
-                az.plot_pair(
-                    inference_data,
-                    var_names=[param, "energy__"],
-                    coords={dim: [coord]},
-                    kind="scatter",
-                    marginals=True,
-                    figsize=(5, 5),
-                )
-                plt.title(f"energy__ vs {param}[{coord}]")
+            for i, coord in enumerate(param_coords[dim]):
+                plt.figure(figsize=(5, 5))
+                plt.scatter(energy, arr_flat[:, i], alpha=0.5)
+                plt.xlabel("energy")
+                plt.ylabel(f"{param}[{coord}]")
+                plt.title(f"energy vs {param}[{coord}]")
                 plt.show()
-        elif ndim == 2:
+        elif arr_flat.ndim == 3:
             # 2D parameter (matrix)
             dim0, dim1 = param_dims
-            for coord0 in param_coords[dim0]:
-                for coord1 in param_coords[dim1]:
-                    az.plot_pair(
-                        inference_data,
-                        var_names=[param, "energy__"],
-                        coords={dim0: [coord0], dim1: [coord1]},
-                        kind="scatter",
-                        marginals=True,
-                        figsize=(5, 5),
-                    )
-                    plt.title(f"energy__ vs {param}[{coord0},{coord1}]")
+            for i, coord0 in enumerate(param_coords[dim0]):
+                for j, coord1 in enumerate(param_coords[dim1]):
+                    plt.figure(figsize=(5, 5))
+                    plt.scatter(energy, arr_flat[:, i, j], alpha=0.5)
+                    plt.xlabel("energy")
+                    plt.ylabel(f"{param}[{coord0},{coord1}]")
+                    plt.title(f"energy vs {param}[{coord0},{coord1}]")
                     plt.show()
 
 

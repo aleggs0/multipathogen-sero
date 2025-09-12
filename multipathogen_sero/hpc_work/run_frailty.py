@@ -85,7 +85,7 @@ data {
     real <lower=0> log_baseline_hazard_scale; // Scale for normal prior on log baseline hazards
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
     real <lower=0> seroreversion_rate_scale; // scale for exponential prior on seroreversion rates
-    real <lower=0> frailty_variance_scale; // scale for exponential prior on variance of individual frailties
+    real <lower=0> frailty_scale_scale; // scale for exponential prior on variance of individual frailties
 }
 """
 # TODO: write tests
@@ -100,7 +100,7 @@ stan_data = {
     "log_baseline_hazard_scale": 1,
     "beta_scale": 1.0,  # scale for Laplace prior on log hazard ratios
     "seroreversion_rate_scale": 1.0,
-    "frailty_variance_scale": 1.0,
+    "frailty_scale_scale": 1.0,
 }
 
 model = CmdStanModel(

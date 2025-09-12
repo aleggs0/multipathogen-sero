@@ -86,8 +86,8 @@ data {
     real log_baseline_hazard_mean; // Mean for normal prior on log baseline hazards
     real <lower=0> log_baseline_hazard_scale; // Scale for normal prior on log baseline hazards
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
-    real <lower=0> seroreversion_rate_scale; // scale for exponential prior on seroreversion rates
-    real <lower=0> frailty_variance_scale; // scale for exponential prior on variance of individual frailties
+    real <lower=0> seroreversion_rate_scale; // scale for half-normal prior on seroreversion rates
+    real <lower=0> frailty_scale_scale; // scale for half-normal prior on scale of individual frailties, sigma_u
 }
 
 transformed data {
@@ -119,7 +119,7 @@ parameters {
     array[K] real<lower=0> baseline_hazards;     // Constant baseline hazard λ₀
     array[K] real<lower=0> seroreversion_rates; // Seroreversion rates for each pathogen
     array[K*(K-1)] real betas;                  // Log hazard ratios for pathogen, pathogen pair where the pathogens are distinct
-    real<lower=0> frailty_variance;             // Variance of individual frailties
+    real<lower=0> frailty_scale;             // Scale of individual frailties
     array[N] real<lower=0> frailties;           // Individual frailties
 }
 
@@ -163,15 +163,15 @@ transformed parameters {
 
 model {
     // Priors
-    target += -log(baseline_hazards); // log(1/λ₀) = -log(λ₀)
-    // baseline_hazards ~ lognormal(log_baseline_hazard_mean, log_baseline_hazard_scale); // Log-normal prior on baseline hazards
+    // target += -log(baseline_hazards); // log(1/λ₀) = -log(λ₀)
+    baseline_hazards ~ lognormal(log_baseline_hazard_mean, log_baseline_hazard_scale); // Log-normal prior on baseline hazards
     betas ~ double_exponential(0, beta_scale);
     // target += -log(seroreversion_rates); // TO DO: make this uninformative
-    seroreversion_rates ~ exponential(seroreversion_rate_scale);
-    frailty_variance ~ exponential(frailty_variance_scale);
+    seroreversion_rates ~ normal(0,seroreversion_rate_scale);
+    frailty_scale ~ normal(0,frailty_scale_scale);
 
     // Likelihood
-    frailties ~ gamma(1/frailty_variance,1/frailty_variance);
+    frailties ~ gamma(1/frailty_scale^2,1/frailty_scale^2);
     array[N] real log_lik = rep_array(0.0, N); {
         int obs_idx = 1; // Index for the current observation
         array[K] int prev_serostatus;
@@ -236,8 +236,8 @@ generated quantities {
 
             for (frailty_sample_idx in 1:n_frailty_samples) {
                 obs_idx = 1;
-                for (i in 1:N) {
-                    frailty_sample = gamma_rng(1/frailty_variance,1/frailty_variance);
+                for (i in 1:N_test) {
+                    frailty_sample = gamma_rng(1/frailty_scale^2,1/frailty_scale^2);
                     q_matrix = baseline_seroconversion_rate_matrix + seroreversion_rate_matrix * frailty_sample;
                     prev_serostatus = serostatus_test[obs_idx,]; // Initial serostatus for the individual
                     prev_obs_time = obs_times_test[obs_idx]; // Initial test time for the individual

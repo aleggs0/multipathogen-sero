@@ -34,7 +34,7 @@ EXPT_SETTINGS = {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
         "seroreversion_rates": [0.1, 0.1],
-        "frailty_variance": 0.5,
+        "frailty_scale": 0.5,
         "beta_mat": [[0, 0.5], [0.5, 0]],
         "seed": 42
     },
@@ -57,7 +57,7 @@ EXPT_SETTINGS = {
         "log_baseline_hazard_scale": 1,
         "beta_scale": 1.0,
         "seroreversion_rate_scale": 1.0,
-        "frailty_variance_scale": 1.0,  # only when frailty is modelled
+        "frailty_scale_scale": 1.0,  # only when frailty is modelled
         "n_frailty_samples": 10,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
         "iter_sampling": 500,
@@ -91,7 +91,7 @@ infections_df = simulate_infections_seroreversion(
     birth_times=birth_times,
     end_times=EXPT_SETTINGS["train_data"]["t_max"],
     frailty_distribution="gamma",
-    frailty_variance=EXPT_SETTINGS["ground_truth_params"]["frailty_variance"],
+    frailty_scale=EXPT_SETTINGS["ground_truth_params"]["frailty_scale"],
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -127,7 +127,7 @@ infections_df_test = simulate_infections_seroreversion(
     birth_times=birth_times_test,
     end_times=EXPT_SETTINGS["test_data"]["t_max"],
     frailty_distribution="gamma",
-    frailty_variance=EXPT_SETTINGS["ground_truth_params"]["frailty_variance"],
+    frailty_scale=EXPT_SETTINGS["ground_truth_params"]["frailty_scale"],
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -166,7 +166,7 @@ stan_data = {
     "log_baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["log_baseline_hazard_scale"],
     "beta_scale": EXPT_SETTINGS["inference_params"]["beta_scale"],
     "seroreversion_rate_scale": EXPT_SETTINGS["inference_params"]["seroreversion_rate_scale"],
-    "frailty_variance_scale": EXPT_SETTINGS["inference_params"]["frailty_variance_scale"]
+    "frailty_scale_scale": EXPT_SETTINGS["inference_params"]["frailty_scale_scale"]
 }
 model = CmdStanModel(
     stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty.stan")

@@ -155,7 +155,7 @@ def simulate_infections_seroreversion(
     end_times: Optional[Union[np.ndarray, float]] = None,
     frailty_distribution: Optional[str] = None,
     log_frailty_covariance: Optional[np.ndarray] = None,
-    frailty_variance: Optional[float] = None,
+    frailty_scale: Optional[float] = None,
     beta_mat: Optional[np.ndarray] = None,
     interaction_mat: Optional[np.ndarray] = None,
     seroreversion_rates: Optional[List[float]] = None,
@@ -191,18 +191,18 @@ def simulate_infections_seroreversion(
     if interaction_mat.shape != (n_pathogens, n_pathogens):
         raise ValueError("interaction_mat must be a square matrix of size n_pathogens.")
     if frailty_distribution is None:
-        if log_frailty_covariance is not None or frailty_variance is not None:
-            raise ValueError("If frailty_distribution is None, both log_frailty_covariance and frailty_variance must be None.")
+        if log_frailty_covariance is not None or frailty_scale is not None:
+            raise ValueError("If frailty_distribution is None, both log_frailty_covariance and frailty_scale must be None.")
     elif frailty_distribution == 'lognormal':
         warnings.warn("lognormal frailties do not have expectation 1", UserWarning)
         ## TODO: use copulas instead for dependent frailties with expectation 1?
         if log_frailty_covariance is None:
             raise ValueError("If frailty_distribution is 'lognormal', either log_frailty_covariance must be specified.")
-        if frailty_variance is not None:
-            raise ValueError("If frailty_distribution is 'lognormal', frailty_variance must be None.")
+        if frailty_scale is not None:
+            raise ValueError("If frailty_distribution is 'lognormal', frailty_scale must be None.")
     elif frailty_distribution == 'gamma':
-        if frailty_variance is None:
-            raise ValueError("If frailty_distribution is 'gamma', frailty_variance must be specified.")
+        if frailty_scale is None:
+            raise ValueError("If frailty_distribution is 'gamma', frailty_scale must be specified.")
         if log_frailty_covariance is not None:
             raise ValueError("If frailty_distribution is 'gamma', log_frailty_covariance must be None.")
     else:
@@ -229,7 +229,7 @@ def simulate_infections_seroreversion(
         elif frailty_distribution == 'gamma':
             indiv_frailty = np.full(
                 n_pathogens,
-                np.random.gamma(shape=1 / frailty_variance, scale=frailty_variance)
+                np.random.gamma(shape=1 / frailty_scale**2, scale=frailty_scale**2)
             )
         else:
             indiv_frailty = np.ones(n_pathogens)
