@@ -6,6 +6,7 @@ simulate infections from a survivor function, and create serosurveys from the si
 
 
 from typing import Callable, Dict, Union, List, Optional
+import warnings
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
@@ -152,13 +153,16 @@ def simulate_infections_seroreversion(
     foi_list: List[Callable[[Union[float, np.ndarray]], np.ndarray]],
     birth_times: Optional[Union[np.ndarray, float]] = None,
     end_times: Optional[Union[np.ndarray, float]] = None,
+    frailty_distribution: Optional[str] = None,
     log_frailty_covariance: Optional[np.ndarray] = None,
+    frailty_variance: Optional[float] = None,
     beta_mat: Optional[np.ndarray] = None,
     interaction_mat: Optional[np.ndarray] = None,
     seroreversion_rates: Optional[List[float]] = None,
     max_fois: Optional[np.ndarray] = None,
     random_seed: Optional[int] = None
 ):
+    # validate inputs
     if birth_times is None:
         birth_times = 0.0
     elif not isinstance(birth_times, np.ndarray):
@@ -175,8 +179,6 @@ def simulate_infections_seroreversion(
         interaction_mat = np.exp(beta_mat)
     elif interaction_mat is None:
         interaction_mat = np.ones((n_pathogens, n_pathogens))
-    if log_frailty_covariance is None:
-        log_frailty_covariance = np.zeros((n_pathogens, n_pathogens))
     if max_fois is None:
         t_grid = np.linspace(0, end_times, 1000)
         max_fois = np.array([foi_list[k](t_grid).max() for k in range(n_pathogens)])
@@ -188,8 +190,23 @@ def simulate_infections_seroreversion(
         raise ValueError("foi_list must have length equal to n_pathogens.")
     if interaction_mat.shape != (n_pathogens, n_pathogens):
         raise ValueError("interaction_mat must be a square matrix of size n_pathogens.")
-    if log_frailty_covariance.shape != (n_pathogens, n_pathogens):
-        raise ValueError("log_frailty_covariance must be a square matrix of size n_pathogens.")
+    if frailty_distribution is None:
+        if log_frailty_covariance is not None or frailty_variance is not None:
+            raise ValueError("If frailty_distribution is None, both log_frailty_covariance and frailty_variance must be None.")
+    elif frailty_distribution == 'lognormal':
+        warnings.warn("lognormal frailties do not have expectation 1", UserWarning)
+        ## TODO: use copulas instead for dependent frailties with expectation 1?
+        if log_frailty_covariance is None:
+            raise ValueError("If frailty_distribution is 'lognormal', either log_frailty_covariance must be specified.")
+        if frailty_variance is not None:
+            raise ValueError("If frailty_distribution is 'lognormal', frailty_variance must be None.")
+    elif frailty_distribution == 'gamma':
+        if frailty_variance is None:
+            raise ValueError("If frailty_distribution is 'gamma', frailty_variance must be specified.")
+        if log_frailty_covariance is not None:
+            raise ValueError("If frailty_distribution is 'gamma', log_frailty_covariance must be None.")
+    else:
+        raise ValueError("frailty_distribution must be one of None, 'lognormal', or 'gamma'.")
     if len(seroreversion_rates) != n_pathogens:
         raise ValueError("seroreversion_rates must have length equal to n_pathogens.")
     if birth_times.shape[0] != n_people:
@@ -204,10 +221,18 @@ def simulate_infections_seroreversion(
     for i in range(n_people):
         birth_time = birth_times[i]
         end_time = end_times[i]
-        indiv_log_frailty = np.random.multivariate_normal(
-            np.zeros(n_pathogens), log_frailty_covariance
-        )
-        indiv_frailty = np.exp(indiv_log_frailty)
+        if frailty_distribution == 'lognormal':
+            indiv_log_frailty = np.random.multivariate_normal(
+                np.zeros(n_pathogens), log_frailty_covariance
+            )
+            indiv_frailty = np.exp(indiv_log_frailty)
+        elif frailty_distribution == 'gamma':
+            indiv_frailty = np.full(
+                n_pathogens,
+                np.random.gamma(shape=1 / frailty_variance, scale=frailty_variance)
+            )
+        else:
+            indiv_frailty = np.ones(n_pathogens)
         event_list.append((birth_time, 'birth', i + 1, 0))
         t_current = birth_time
         infection_status = np.zeros(n_pathogens, dtype=bool)  # Track infections for each pathogen

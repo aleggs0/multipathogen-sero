@@ -34,7 +34,7 @@ EXPT_SETTINGS = {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
         "seroreversion_rates": [0.1, 0.1],
-        "log_frailty_variance": 1,
+        "frailty_variance": 0.5,
         "beta_mat": [[0, 0.5], [0.5, 0]],
         "seed": 42
     },
@@ -82,17 +82,16 @@ birth_times = generate_uniform_birth_times(
 foi_list = [
     get_constant_foi(a=baseline_hazard) for baseline_hazard in EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"]
 ]
-log_frailty_covariance = (
-    EXPT_SETTINGS["ground_truth_params"]["log_frailty_variance"]
-    * np.eye(EXPT_SETTINGS["ground_truth_params"]["n_pathogens"])
-)
+
+
 infections_df = simulate_infections_seroreversion(
     n_people=EXPT_SETTINGS["train_data"]["n_people"],
     n_pathogens=EXPT_SETTINGS["ground_truth_params"]["n_pathogens"],
     foi_list=foi_list,
     birth_times=birth_times,
     end_times=EXPT_SETTINGS["train_data"]["t_max"],
-    log_frailty_covariance=log_frailty_covariance,
+    frailty_distribution="gamma",
+    frailty_variance=EXPT_SETTINGS["ground_truth_params"]["frailty_variance"],
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -127,7 +126,8 @@ infections_df_test = simulate_infections_seroreversion(
     foi_list=foi_list,
     birth_times=birth_times_test,
     end_times=EXPT_SETTINGS["test_data"]["t_max"],
-    log_frailty_covariance=log_frailty_covariance,
+    frailty_distribution="gamma",
+    frailty_variance=EXPT_SETTINGS["ground_truth_params"]["frailty_variance"],
     beta_mat=EXPT_SETTINGS["ground_truth_params"]["beta_mat"],
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
@@ -176,7 +176,7 @@ fit = model.sample(
     chains=EXPT_SETTINGS["inference_params"]["chains"],
     iter_sampling=EXPT_SETTINGS["inference_params"]["iter_sampling"],
     iter_warmup=EXPT_SETTINGS["inference_params"]["iter_warmup"],
-    parallel_chains=4,
+    parallel_chains=EXPT_SETTINGS["inference_params"]["chains"],
     seed=EXPT_SETTINGS["inference_params"]["seed"],
     show_progress=False
 )
@@ -190,7 +190,3 @@ print(save_fit_diagnose(fit, OUTPUT_DIR / "pairwise_serology_seroreversion_frail
 
 # do elpd
 # simulate the data
-
-
-
-# ssh these out to gate

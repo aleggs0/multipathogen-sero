@@ -220,7 +220,7 @@ model {
 }
 
 generated quantities {
-    array[N_test] real log_lik; {
+    array[N_test] real log_lik_test; {
         real frailty_sample;
         array[N_test, n_frailty_samples] real log_lik_array = rep_array(0.0, N_test, n_frailty_samples); {
             int obs_idx = 1; // Index for the current test
@@ -272,7 +272,7 @@ generated quantities {
             }
         }
         for (i in 1:N_test) {
-            log_lik[i] = log_sum_exp(log_lik_array[i,]) - log(n_frailty_samples);
+            log_lik_test[i] = log_sum_exp(log_lik_array[i,]) - log(n_frailty_samples);
         }
     }
 }

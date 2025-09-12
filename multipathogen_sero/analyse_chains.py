@@ -3,67 +3,12 @@ import pickle
 import glob
 import numpy as np
 import pandas as pd
+from scipy.special import logsumexp
 import matplotlib.pyplot as plt
 import arviz as az
 import warnings
 
 from multipathogen_sero.config import PROJ_ROOT, MODEL_FITS_DIR
-
-## TODO: Add coverage claculator
-# just for beta12, beta21, frailty variance
-## TODO: Add posterior predictive checks (elpd calculator)
-# generate data according to ground truth
-# generate frailties according to posterior
-# calculate likelihoods
-# report elpd and std error
-"""
-print(f"True baseline hazards: {baseline_hazards}")
-axes = az.plot_forest(idata, var_names=["baseline_hazards"], 
-                      hdi_prob=0.95, combined=True)
-ax = axes[0] if isinstance(axes, (list, np.ndarray)) else axes
-yticks = ax.get_yticks()
-for i, val in enumerate(baseline_hazards[::-1]):
-    ax.scatter(val, yticks[i], marker='x', color='red', s=100, label='True value' if i == 0 else "")
-if len(baseline_hazards) > 0:
-    ax.legend(loc='best')
-plt.title("95% Credible Intervals")
-plt.tight_layout()
-plt.show()
-
-print(f"True beta coefficients: {beta_mat}")
-axes = az.plot_forest(idata, var_names=["beta_matrix"], 
-                      hdi_prob=0.95, combined=True)
-ax = axes[0] if isinstance(axes, (list, np.ndarray)) else axes
-plt.axvline(0, color='black', linestyle='--', alpha=0.7)
-yticks = ax.get_yticks()
-for i, val in enumerate(beta_mat.flatten()[::-1]):
-    ax.scatter(val, yticks[i], marker='x', color='red', s=100, label='True value' if i == 0 else "")
-if beta_mat.size > 0:
-    ax.legend(loc='best')
-plt.title("95% Credible Intervals")
-plt.tight_layout()
-plt.show()
-"""
-## TODO: Include diagnostic/summary printing
-
-"""
-# Print summary
-print(fit.diagnose())
-
-# Check R-hat and ESS
-df_summary = fit.summary()
-print("Any R-hat > 1.01?", (df_summary["R_hat"] > 1.01).any())
-print("Any ESS < 400?", (df_summary["ESS_bulk"] < 400).any())
-print(df_summary)
-
-# Optional: convert to ArviZ for easier plotting
-idata = az.from_cmdstanpy(posterior=fit)
-
-# Plot trace plots
-az.plot_trace(idata, var_names=["baseline_hazards", "betas", "seroreversion_rates"])
-plt.tight_layout()
-plt.show()
-"""
 
 
 def save_fit_diagnose(fit, fit_dir, filename="fit_diagnose.txt"):
@@ -166,8 +111,8 @@ def posterior_plot(
                 # Get HDI for each component
                 try:
                     summary = az.summary(inference_data, var_names=[var], hdi_prob=hdi_prob)
-                    hdi_lower = summary['hdi_{}%'.format(int(100*(1-hdi_prob)/2))]
-                    hdi_upper = summary['hdi_{}%'.format(int(100*(1-(1-hdi_prob)/2)))]
+                    hdi_lower = summary['hdi_{}%'.format(int(100 * (1 - hdi_prob) / 2))]
+                    hdi_upper = summary['hdi_{}%'.format(int(100 * (1 - (1 - hdi_prob) / 2)))]
                 except Exception:
                     hdi_lower = None
                     hdi_upper = None
@@ -201,6 +146,120 @@ def posterior_plot(
         img_path = os.path.join(analysis_dir, "posterior_plot.png")
         plt.gcf().savefig(img_path)
     return axes, coverage_dict
+
+
+def elpd_using_test_set(
+    idata,
+    var_name="log_lik_test"
+):
+    """Compute approximate ELPD using a test set from an inference dataset.
+    Parameters
+    ----------
+    idata : arviz.InferenceData
+        The inference dataset containing posterior samples and pointwise log-likelihoods.
+    var_name : str
+        The name of the variable containing pointwise log-likelihoods.
+    Returns
+    -------
+    elpd : float
+        The estimated expected log predictive density.
+    se_elpd : float
+        The standard error of the ELPD estimate [over individuals in the test set].
+    lse : np.ndarray
+        The pointwise log predictive densities for each inidividual in the test set.
+    """
+    if var_name not in idata.posterior:
+        raise ValueError(f"Variable '{var_name}' not found in posterior.")
+    log_lik = idata.posterior[var_name].values  # shape (chains, draws, n_data)
+    # Combine chains and draws
+    log_lik_reshaped = log_lik.reshape(-1, log_lik.shape[-1])  # shape (samples, n_data)
+    # Compute pointwise log predictive density using log-sum-exp trick
+    lse = logsumexp(log_lik_reshaped, axis=0) - np.log(log_lik_reshaped.shape[0])  # shape (n_data,)
+    elpd = np.sum(lse)  # scalar
+    # Standard error of ELPD
+    se_elpd = np.sqrt(len(lse) * np.var(lse))  # scalar
+    return elpd, se_elpd, lse
+
+
+def compare_using_test_set(
+    idata1, idata2,
+    var_name="log_lik_test"
+):
+    """Compare two inference datasets using approximate ELPD.
+    Parameters
+    ----------
+    idata1, idata2 : arviz.InferenceData
+        The inference datasets to compare.
+    var_name : str
+        The name of the variable containing pointwise log-likelihoods.
+    Returns
+    -------
+    elpd_diff : float
+        The difference in ELPD between the two datasets.
+    se_diff : float
+        The standard error of the ELPD difference.
+    """
+    _, _, lse1 = elpd_using_test_set(idata1, var_name=var_name)
+    _, _, lse2 = elpd_using_test_set(idata2, var_name=var_name)
+    diff = lse1 - lse2
+    elpd_diff = np.sum(diff)
+    se_diff = np.sqrt(len(diff) * np.var(diff))
+    return elpd_diff, se_diff
+
+
+def energy_pairs_plots(
+    inference_data,
+    var_names=["lp__", "betas", "frailty_variance"]
+):
+    """Plot energy pairs plots for selected variables and save image in fit_dir/analysis/.
+    Warning: this is not very robust, only intended for exploring in a notebook."""
+
+    for param in var_names:
+        values = inference_data.posterior[param]
+        param_dims = values.dims[2:]  # skip chain and draw
+        param_coords = {dim: values.coords[dim].values for dim in param_dims}
+        ndim = len(param_dims)
+
+        if ndim == 0:
+            # Scalar parameter
+            az.plot_pair(
+                inference_data,
+                var_names=[param, "energy__"],
+                kind="scatter",
+                marginals=True,
+                figsize=(5, 5),
+            )
+            plt.title(f"energy__ vs {param}")
+            plt.show()
+        elif ndim == 1:
+            # 1D parameter (vector)
+            dim = param_dims[0]
+            for coord in param_coords[dim]:
+                az.plot_pair(
+                    inference_data,
+                    var_names=[param, "energy__"],
+                    coords={dim: [coord]},
+                    kind="scatter",
+                    marginals=True,
+                    figsize=(5, 5),
+                )
+                plt.title(f"energy__ vs {param}[{coord}]")
+                plt.show()
+        elif ndim == 2:
+            # 2D parameter (matrix)
+            dim0, dim1 = param_dims
+            for coord0 in param_coords[dim0]:
+                for coord1 in param_coords[dim1]:
+                    az.plot_pair(
+                        inference_data,
+                        var_names=[param, "energy__"],
+                        coords={dim0: [coord0], dim1: [coord1]},
+                        kind="scatter",
+                        marginals=True,
+                        figsize=(5, 5),
+                    )
+                    plt.title(f"energy__ vs {param}[{coord0},{coord1}]")
+                    plt.show()
 
 
 # Example usage:
