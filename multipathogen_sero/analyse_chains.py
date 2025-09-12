@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import arviz as az
+import warnings
 
 from multipathogen_sero.config import PROJ_ROOT, MODEL_FITS_DIR
 
@@ -15,9 +16,6 @@ from multipathogen_sero.config import PROJ_ROOT, MODEL_FITS_DIR
 # generate frailties according to posterior
 # calculate likelihoods
 # report elpd and std error
-## TODO: Add pair plots
-# just for beta12, beta21, frailty variance pairwise
-## TODO: Include plots for truth vs fitted posterior
 """
 print(f"True baseline hazards: {baseline_hazards}")
 axes = az.plot_forest(idata, var_names=["baseline_hazards"], 
@@ -67,62 +65,149 @@ plt.tight_layout()
 plt.show()
 """
 
-def load_fit_results(fit_dir):
+
+def save_fit_diagnose(fit, fit_dir, filename="fit_diagnose.txt"):
+    """
+    Save the diagnostics from CmdStanPy fit.diagnose() to a text file.
+
+    Parameters
+    ----------
+    fit : CmdStanMCMC or CmdStanMLE
+        The fitted CmdStanPy model object.
+    output_path : str or Path
+        Path to the output file.
+    """
+    diagnose_str = fit.diagnose()
+    with open(fit_dir / filename, "w") as f:
+        f.write(diagnose_str)
+    return diagnose_str
+
+
+def read_fit_csv_dir(fit_dir):
     """Load CmdStanPy chain CSVs and metadata pickle from a fit directory."""
     # Load chains
     chain_files = sorted(glob.glob(os.path.join(fit_dir, '*.csv')))
     if not chain_files:
         raise FileNotFoundError("No chain CSV files found in directory.")
     inference_data = az.from_cmdstan(chain_files)
-    
-    # Load metadata
-    metadata_path = os.path.join(fit_dir, 'metadata.pkl')
-    if not os.path.exists(metadata_path):
-        raise FileNotFoundError("metadata.pkl not found in directory.")
-    with open(metadata_path, 'rb') as f:
-        metadata = pickle.load(f)
-    
-    return inference_data, metadata
+    return inference_data
 
-def basic_summary(inference_data):
+
+def basic_summary(inference_data, suppress_warnings=True):
     """Print basic summary statistics for posterior samples.
     Note: division by zero warnings will appear if any of the
     parameters are deterministically fixed.
     """
-    print(az.summary(inference_data, round_to=2))
+    if suppress_warnings:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            print(az.summary(inference_data, round_to=2))
+    else:
+        print(az.summary(inference_data, round_to=2))
 
-def save_trace_plot(inference_data, var_names=None, fit_dir=None):
+
+def trace_plot(inference_data, var_names=None, save_dir=None):
     """Plot trace for selected variables and save image in fit_dir/analysis/."""
-    fig = az.plot_trace(inference_data, var_names=var_names)
-    if fit_dir is not None:
+    axes = az.plot_trace(inference_data, var_names=var_names)
+    if save_dir is not None:
         analysis_dir = os.path.join(fit_dir, "analysis")
         os.makedirs(analysis_dir, exist_ok=True)
         img_path = os.path.join(analysis_dir, "trace_plot.png")
         plt.gcf().savefig(img_path)
+    return axes
 
-def save_posterior_plot(inference_data, var_names=None, fit_dir=None):
-    """Plot posterior distributions for selected variables."""
-    fig = az.plot_posterior(inference_data, var_names=var_names)
-    if fit_dir is not None:
+
+def pairs_plot(inference_data, var_names=None, save_dir=None, figsize=None):
+    """Plot trace for selected variables and save image in fit_dir/analysis/."""
+    axes = az.plot_pair(
+        inference_data,
+        var_names=["betas", "frailty_variance"],  # replace with your variable names
+        # kind='scatter',      # or 'kde' for density
+        # marginals=True,      # show marginal distributions
+        figsize=figsize
+    )
+    if save_dir is not None:
         analysis_dir = os.path.join(fit_dir, "analysis")
+        os.makedirs(analysis_dir, exist_ok=True)
+        img_path = os.path.join(analysis_dir, "pairs_plot.png")
+        plt.gcf().savefig(img_path)
+    return axes
+
+
+def posterior_plot(
+        inference_data,
+        var_names=None,
+        ground_truth=None,
+        save_dir=None,
+        fig_grid=None,
+        fig_size=None,
+        hdi_prob=0.94):
+    """Plot posterior distributions for selected variables, overlay ground truth if provided.
+    Also return a dict indicating if ground truth is inside the HDI for each variable/component.
+    """
+    axes = az.plot_posterior(
+        inference_data, var_names=var_names,
+        grid=fig_grid,
+        figsize=fig_size,
+        hdi_prob=hdi_prob
+    )
+    # Flatten axes if it's a numpy array
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten()
+    elif not isinstance(axes, list):
+        axes = [axes]
+    ax_idx = 0
+    coverage_dict = {}
+    if ground_truth is not None and var_names is not None:
+        for var in var_names:
+            coverage_dict[var] = []
+            if var in ground_truth:
+                true_val = np.ravel(ground_truth[var])
+                # Get HDI for each component
+                try:
+                    summary = az.summary(inference_data, var_names=[var], hdi_prob=hdi_prob)
+                    hdi_lower = summary['hdi_{}%'.format(int(100*(1-hdi_prob)/2))]
+                    hdi_upper = summary['hdi_{}%'.format(int(100*(1-(1-hdi_prob)/2)))]
+                except Exception:
+                    hdi_lower = None
+                    hdi_upper = None
+                for i, v in enumerate(true_val):
+                    ax = axes[ax_idx]
+                    ax.axvline(v, color='red', linestyle='--')
+                    ax.legend(loc='best')
+                    # Check coverage
+                    if hdi_lower is not None and hdi_upper is not None:
+                        # If variable is multidimensional, summary index is (var, component)
+                        try:
+                            lower = hdi_lower.iloc[i]
+                            upper = hdi_upper.iloc[i]
+                        except Exception:
+                            lower = hdi_lower
+                            upper = hdi_upper
+                        coverage_dict[var].append(lower <= v <= upper)
+                    else:
+                        coverage_dict[var].append(None)
+                    ax_idx += 1
+            else:
+                # If no ground truth, still increment ax_idx by number of components
+                try:
+                    shape = np.shape(inference_data.posterior[var].values)
+                    ax_idx += np.prod(shape[1:]) if len(shape) > 1 else 1
+                except Exception:
+                    ax_idx += 1
+    if save_dir is not None:
+        analysis_dir = os.path.join(save_dir, "analysis")
         os.makedirs(analysis_dir, exist_ok=True)
         img_path = os.path.join(analysis_dir, "posterior_plot.png")
         plt.gcf().savefig(img_path)
+    return axes, coverage_dict
 
-def load_metadata(fit_dir):
-    """Load metadata.pkl from a fit directory."""
-    metadata_path = os.path.join(fit_dir, 'metadata.pkl')
-    if not os.path.exists(metadata_path):
-        raise FileNotFoundError("metadata.pkl not found in directory.")
-    with open(metadata_path, 'rb') as f:
-        metadata = pickle.load(f)
-    return metadata
 
 # Example usage:
 if __name__ == "__main__":
     fit_dir = MODEL_FITS_DIR / "fit_1757355989"
-    inference_data, metadata = load_fit_results(fit_dir)
+    inference_data, metadata = read_fit_csv_dir(fit_dir)
     print("Metadata:", metadata)
     # basic_summary(inference_data)
-    save_trace_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], fit_dir=fit_dir)
-    save_posterior_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], fit_dir=fit_dir)
+    trace_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], save_dir=fit_dir)
+    posterior_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], save_dir=fit_dir)

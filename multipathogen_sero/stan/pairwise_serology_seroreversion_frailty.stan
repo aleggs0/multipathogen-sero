@@ -68,13 +68,21 @@ functions{
 
 
 data {
-    int<lower=1> N;                         // Number of individuals
-    array[N] int<lower=1> num_tests;                 // Number of serological tests for each individual
-    int<lower=1> num_tests_total; // Total number of serological tests across all individuals
     int<lower=2, upper=2> K;                         // Number of pathogens
-    array[num_tests_total] real test_times; // Time of each serological test
-    array[num_tests_total,K] int<lower=0, upper=1> serostatus; // Seropositivity for each test and pathogen
     
+    int<lower=1> N;                         // Number of individuals
+    array[N] int<lower=1> num_obs;                 // Number of serological tests for each individual
+    int<lower=1> num_obs_total; // Total number of serological tests across all individuals
+    array[num_obs_total] real obs_times; // Time of each serological test
+    array[num_obs_total,K] int<lower=0, upper=1> serostatus; // Seropositivity for each test and pathogen
+    
+    int<lower=1> N_test;                         // Number of individuals
+    array[N_test] int<lower=1> num_obs_test;                 // Number of serological tests for each individual
+    int<lower=1> num_obs_total_test; // Total number of serological tests across all individuals
+    array[num_obs_total_test] real obs_times_test; // Time of each serological test
+    array[num_obs_total_test,K] int<lower=0, upper=1> serostatus_test; // Seropositivity for each test and pathogen
+    int<lower=1> n_frailty_samples; // Number of frailty samples to draw in generated quantities
+
     real log_baseline_hazard_mean; // Mean for normal prior on log baseline hazards
     real <lower=0> log_baseline_hazard_scale; // Scale for normal prior on log baseline hazards
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
@@ -165,54 +173,106 @@ model {
     // Likelihood
     frailties ~ gamma(1/frailty_variance,1/frailty_variance);
     array[N] real log_lik = rep_array(0.0, N); {
-        int test_idx = 1; // Index for the current test
+        int obs_idx = 1; // Index for the current observation
         array[K] int prev_serostatus;
-        real prev_test_time;
+        real prev_obs_time;
         int prev_state_index;
         // matrix[num_infection_states,1] prev_infection_state_vector;
         array[K] int next_serostatus;
-        real next_test_time;
+        real next_obs_time;
         int next_state_index;
         matrix[num_infection_states,1] next_infection_state_vector;
         matrix[num_infection_states,num_infection_states] q_matrix;
         for (i in 1:N) {
             q_matrix = baseline_seroconversion_rate_matrix + seroreversion_rate_matrix * frailties[i];
-            prev_serostatus = serostatus[test_idx,]; // Initial serostatus for the individual
-            prev_test_time = test_times[test_idx]; // Initial test time for the individual
+            prev_serostatus = serostatus[obs_idx,]; // Initial serostatus for the individual
+            prev_obs_time = obs_times[obs_idx]; // Initial test time for the individual
             prev_state_index = infection_state_to_index(prev_serostatus);
-            next_serostatus = serostatus[test_idx+1,];
+            next_serostatus = serostatus[obs_idx+1,];
             next_state_index = infection_state_to_index(next_serostatus);
             next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
             next_infection_state_vector[next_state_index,1] = 1.0; // Set the initial state vector
-            test_idx += 1;
-            for (j in 1:num_tests[i]-1) {
+            obs_idx += 1;
+            for (j in 1:num_obs[i]-1) {
                 // Get the current test time and serostatus
-                next_serostatus = serostatus[test_idx];
-                next_test_time = test_times[test_idx];
+                next_serostatus = serostatus[obs_idx];
+                next_obs_time = obs_times[obs_idx];
                 next_state_index = infection_state_to_index(next_serostatus);
                 next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
                 next_infection_state_vector[next_state_index,1] = 1.0;
                 // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
                 log_lik[i] += log(
                     matrix_exp_multiply( //this is equivalent to getting the entry [prev_state_index, next_state_index] of the matrix exponential
-                        q_matrix * (next_test_time - prev_test_time), // q_matrix times time difference between tests
+                        q_matrix * (next_obs_time - prev_obs_time), // q_matrix times time difference between tests
                         next_infection_state_vector
                     )[prev_state_index,1]
                 );
-                // log_lik[i] += log(transition_prob_approx(
-                //     prev_state_index,
-                //     next_state_index,
-                //     next_test_time - prev_test_time,
-                //     q_matrix, q_power_2, q_power_3, q_power_4, eye
-                // ));
                 // Update the previous state for the next iteration
                 prev_serostatus = next_serostatus;
-                prev_test_time = next_test_time;
+                prev_obs_time = next_obs_time;
                 prev_state_index = next_state_index;
                 //prev_infection_state_vector = next_infection_state_vector;
-                test_idx += 1;
+                obs_idx += 1;
             }
         }
     }
     target += log_lik;
+}
+
+generated quantities {
+    array[N_test] real log_lik; {
+        real frailty_sample;
+        array[N_test, n_frailty_samples] real log_lik_array = rep_array(0.0, N_test, n_frailty_samples); {
+            int obs_idx = 1; // Index for the current test
+            array[K] int prev_serostatus;
+            real prev_obs_time;
+            int prev_state_index;
+            // matrix[num_infection_states,1] prev_infection_state_vector;
+            array[K] int next_serostatus;
+            real next_obs_time;
+            int next_state_index;
+            matrix[num_infection_states,1] next_infection_state_vector;
+            matrix[num_infection_states,num_infection_states] q_matrix;
+
+            for (frailty_sample_idx in 1:n_frailty_samples) {
+                obs_idx = 1;
+                for (i in 1:N) {
+                    frailty_sample = gamma_rng(1/frailty_variance,1/frailty_variance);
+                    q_matrix = baseline_seroconversion_rate_matrix + seroreversion_rate_matrix * frailty_sample;
+                    prev_serostatus = serostatus_test[obs_idx,]; // Initial serostatus for the individual
+                    prev_obs_time = obs_times_test[obs_idx]; // Initial test time for the individual
+                    prev_state_index = infection_state_to_index(prev_serostatus);
+                    next_serostatus = serostatus_test[obs_idx+1,];
+                    next_state_index = infection_state_to_index(next_serostatus);
+                    next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
+                    next_infection_state_vector[next_state_index,1] = 1.0; // Set the initial state vector
+                    obs_idx += 1;
+                    for (j in 1:num_obs_test[i]-1) {
+                        // Get the current test time and serostatus
+                        next_serostatus = serostatus_test[obs_idx];
+                        next_obs_time = obs_times_test[obs_idx];
+                        next_state_index = infection_state_to_index(next_serostatus);
+                        next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
+                        next_infection_state_vector[next_state_index,1] = 1.0;
+                        // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
+                        log_lik_array[i, frailty_sample_idx] += log(
+                            matrix_exp_multiply( //this is equivalent to getting the entry [prev_state_index, next_state_index] of the matrix exponential
+                                q_matrix * (next_obs_time - prev_obs_time), // q_matrix times time difference between tests
+                                next_infection_state_vector
+                            )[prev_state_index,1]
+                        );
+                        // Update the previous state for the next iteration
+                        prev_serostatus = next_serostatus;
+                        prev_obs_time = next_obs_time;
+                        prev_state_index = next_state_index;
+                        //prev_infection_state_vector = next_infection_state_vector;
+                        obs_idx += 1;
+                    }
+                }
+            }
+        }
+        for (i in 1:N_test) {
+            log_lik[i] = log_sum_exp(log_lik_array[i,]) - log(n_frailty_samples);
+        }
+    }
 }

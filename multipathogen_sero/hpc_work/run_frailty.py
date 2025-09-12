@@ -1,13 +1,7 @@
-import os
 import pickle
 import time
 import numpy as np
-import pandas as pd
 
-from statsmodels.stats.contingency_tables import Table2x2
-from statsmodels.stats.multitest import multipletests
-from scipy.special import erf
-import cmdstanpy
 from cmdstanpy import CmdStanModel
 import arviz as az
 
@@ -23,9 +17,9 @@ from multipathogen_sero.config import PROJ_ROOT, STAN_DIR, MODEL_FITS_DIR
 include_interations = True  # Whether to include interaction terms in the model
 include_frailty = True  # Whether to include frailty in the model
 
-n_people = 1000 #number of individuals n
+n_people = 1000  # number of individuals n
 np.random.seed(42)  # For reproducibility
-t_max=100
+t_max = 100
 birth_times = np.random.uniform(0, t_max, size=n_people)  # Random birth times for individuals
 n_pathogens=2 #number of pathogens K
 

@@ -9,5 +9,5 @@
 #SBATCH --time=0:20:00
 ##SBATCH --export=ALL
 
-rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/log ayan@gate.stats.ox.ac.uk:~/
-rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/sero/multipathogen-sero/model_fits/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/
+rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/log/ ayan@gate.stats.ox.ac.uk:~/log/
+rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/sero/multipathogen-sero/model_fits/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/model-fits/
