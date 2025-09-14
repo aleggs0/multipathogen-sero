@@ -5,6 +5,7 @@ import numpy as np
 from scipy.special import logsumexp
 import matplotlib.pyplot as plt
 import arviz as az
+import math
 import warnings
 from multipathogen_sero.config import MODEL_FITS_DIR
 
@@ -44,9 +45,9 @@ def basic_summary(inference_data, suppress_warnings=True):
     if suppress_warnings:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            print(az.summary(inference_data, round_to=2))
+            return az.summary(inference_data, round_to=2)
     else:
-        print(az.summary(inference_data, round_to=2))
+        return az.summary(inference_data, round_to=2)
 
 
 def trace_plot(inference_data, var_names=None, save_dir=None):
@@ -209,22 +210,21 @@ def compare_using_test_set(
 
 
 def plot_energy_vs_lp_and_params(
-    inference_data, var_names=["betas", "log_frailty_std"]
+    inference_data, var_names=["betas", "log_frailty_std"], save_dir=None
 ):
     """
     Plot energy (from sample_stats) against lp (from sample_stats),
     and against each parameter in var_names (from posterior).
+    Save all plots in a single figure.
     """
+
     energy = inference_data.sample_stats["energy"].values.flatten()
     lp = inference_data.sample_stats["lp"].values.flatten()
 
-    # Plot energy vs lp
-    plt.figure(figsize=(5, 5))
-    plt.scatter(energy, lp, alpha=0.5)
-    plt.xlabel("energy")
-    plt.ylabel("lp")
-    plt.title("energy vs lp")
-    plt.show()
+    plots = []
+
+    # Prepare plot data
+    plots.append(("energy vs lp", energy, lp, "lp"))
 
     for param in var_names:
         if param not in inference_data.posterior:
@@ -236,34 +236,39 @@ def plot_energy_vs_lp_and_params(
         arr_flat = arr.reshape(-1, *arr.shape[2:])
 
         if arr_flat.ndim == 1:
-            # Scalar parameter
-            plt.figure(figsize=(5, 5))
-            plt.scatter(energy, arr_flat, alpha=0.5)
-            plt.xlabel("energy")
-            plt.ylabel(param)
-            plt.title(f"energy vs {param}")
-            plt.show()
+            plots.append((f"energy vs {param}", energy, arr_flat, param))
         elif arr_flat.ndim == 2:
-            # 1D parameter (vector)
             dim = param_dims[0]
             for i, coord in enumerate(param_coords[dim]):
-                plt.figure(figsize=(5, 5))
-                plt.scatter(energy, arr_flat[:, i], alpha=0.5)
-                plt.xlabel("energy")
-                plt.ylabel(f"{param}[{coord}]")
-                plt.title(f"energy vs {param}[{coord}]")
-                plt.show()
+                plots.append((f"energy vs {param}[{coord}]", energy, arr_flat[:, i], f"{param}[{coord}]"))
         elif arr_flat.ndim == 3:
-            # 2D parameter (matrix)
             dim0, dim1 = param_dims
             for i, coord0 in enumerate(param_coords[dim0]):
                 for j, coord1 in enumerate(param_coords[dim1]):
-                    plt.figure(figsize=(5, 5))
-                    plt.scatter(energy, arr_flat[:, i, j], alpha=0.5)
-                    plt.xlabel("energy")
-                    plt.ylabel(f"{param}[{coord0},{coord1}]")
-                    plt.title(f"energy vs {param}[{coord0},{coord1}]")
-                    plt.show()
+                    plots.append((f"energy vs {param}[{coord0},{coord1}]", energy, arr_flat[:, i, j], f"{param}[{coord0},{coord1}]"))
+
+    n_plots = len(plots)
+    n_cols = 2
+    n_rows = math.ceil(n_plots / n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 5 * n_rows))
+    axes = axes.flatten()
+
+    for idx, (title, x, y, ylabel) in enumerate(plots):
+        ax = axes[idx]
+        ax.scatter(x, y, alpha=0.5)
+        ax.set_xlabel("energy")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+
+    # Hide unused axes
+    for ax in axes[n_plots:]:
+        ax.axis('off')
+
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(save_dir / "energy_vs_params.png")
+    plt.close(fig)
 
 
 # Example usage:

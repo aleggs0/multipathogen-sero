@@ -20,18 +20,41 @@ from multipathogen_sero.analyse_chains import (
     pairs_plot,
     posterior_plot,
     elpd_using_test_set,
-    compare_using_test_set
+    compare_using_test_set,
+    plot_energy_vs_lp_and_params
 )
 
 # N_REPEATS = 3
 # TODO: define the parameter grid (simulation params, random seed)
 
-ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 0))
+ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
+JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 1))
 HOSTNAME = os.environ.get('HOSTNAME', '')
 TIMESTAMP = int(time.time()),
 
-# initialise settings of the experiment
+
+def get_param_grid(array_index):
+    """
+    This defines the parameters used for each array index of the experiment.
+    """
+    beta_mats = [
+        [[0, 0], [0, 0]],
+        [[0, 0.5], [0.5, 0]],
+        [[0, -0.5], [-0.5, 0]],
+        [[0, 0.5], [-0.5, 0]],
+    ]
+    log_frailty_stds = [0.0, 0.3, 1.0]
+    n_beta = len(beta_mats)
+    n_frailty = len(log_frailty_stds)
+    total = n_beta * n_frailty
+    idx = array_index % total
+    beta_idx = idx // n_frailty
+    frailty_idx = idx % n_frailty
+    return beta_mats[beta_idx], log_frailty_stds[frailty_idx]
+
+
+beta_mat, log_frailty_std = get_param_grid(ARRAY_INDEX)
+
 EXPT_SETTINGS = {
     "runtime_info": {
         "job_id": JOB_ID,
@@ -43,34 +66,33 @@ EXPT_SETTINGS = {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
         "seroreversion_rates": [0.1, 0.1],
-        "log_frailty_std": 0.5,
-        "beta_mat": [[0, 0.5], [0.5, 0]],
+        "log_frailty_std": log_frailty_std,
+        "beta_mat": beta_mat,
         "seed": 42
     },
     "train_data": {
-        "n_people": 2000,  # TODO: make this variable
+        "n_people": 300,  # TODO: make this variable
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
-        "n_people": 2000,
+        "n_people": 300,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 2411 + ARRAY_INDEX  # must be different from train seed
     },
     "inference_params": {
-        "log_baseline_hazard_mean": -1,
-        "log_baseline_hazard_scale": 1,
+        "baseline_hazard_scale": 1.0,
         "beta_scale": 1.0,
         "seroreversion_rate_scale": 1.0,
         "log_frailty_std_scale": 1.0,  # only when frailty is modelled
         "n_frailty_samples": 20,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
-        "iter_sampling": 500,
-        "iter_warmup": 500,
+        "iter_sampling": 100,
+        "iter_warmup": 100,
         "seed": 42
     },
     "notes": ""
@@ -177,8 +199,7 @@ stan_data = {
     "obs_times_test": survey_wide_test['time'].values,
     "serostatus_test": survey_wide_test[[col for col in survey_wide_test.columns if col.startswith('serostatus_')]].values.astype(int),
     "n_frailty_samples": EXPT_SETTINGS["inference_params"]["n_frailty_samples"],
-    "log_baseline_hazard_mean": EXPT_SETTINGS["inference_params"]["log_baseline_hazard_mean"],
-    "log_baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["log_baseline_hazard_scale"],
+    "baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["baseline_hazard_scale"],
     "beta_scale": EXPT_SETTINGS["inference_params"]["beta_scale"],
     "seroreversion_rate_scale": EXPT_SETTINGS["inference_params"]["seroreversion_rate_scale"],
     "log_frailty_std_scale": EXPT_SETTINGS["inference_params"]["log_frailty_std_scale"]
@@ -239,8 +260,8 @@ ground_truth_betas = [
     EXPT_SETTINGS["ground_truth_params"]["beta_mat"][0][1],
     EXPT_SETTINGS["ground_truth_params"]["beta_mat"][1][0]
 ]
-axes, coverage = posterior_plot(
-    idata_frailty, 
+posterior_plot(
+    idata_frailty,
     var_names=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
     ground_truth={
         "betas": ground_truth_betas,
@@ -253,17 +274,22 @@ axes, coverage = posterior_plot(
 trace_plot(
     idata_no_frailty,
     var_names=["betas", "baseline_hazards", "seroreversion_rates"],
-    save_dir=OUTPUT_DIR_FRAILTY
+    save_dir=OUTPUT_DIR_NO_FRAILTY
+)
+pairs_plot(
+    idata_frailty,
+    var_names=["betas"],
+    save_dir=OUTPUT_DIR_NO_FRAILTY
 )
 posterior_plot(
-    idata_no_frailty, 
+    idata_no_frailty,
     var_names=["betas", "baseline_hazards", "seroreversion_rates"],
     ground_truth={
         "betas": ground_truth_betas,
         "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
         "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
     },
-    save_dir=OUTPUT_DIR_FRAILTY
+    save_dir=OUTPUT_DIR_NO_FRAILTY
 )
 # do elpd
 elpd_frailty, se_elpd_frailty, _ = elpd_using_test_set(
@@ -283,3 +309,10 @@ elpd difference (frailty - no frailty): {elpd_diff} (SE: {se_elpd_diff})
 """
 with open(OUTPUT_DIR / "elpd_report.txt", "w") as f:
     f.write(elpd_report)
+
+plot_energy_vs_lp_and_params(
+    idata_frailty, var_names=["betas", "log_frailty_std"], save_dir=OUTPUT_DIR_FRAILTY
+)
+plot_energy_vs_lp_and_params(
+    idata_no_frailty, var_names=["betas"], save_dir=OUTPUT_DIR_NO_FRAILTY
+)

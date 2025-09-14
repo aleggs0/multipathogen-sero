@@ -59,8 +59,7 @@ data {
     array[num_obs_total_test] real obs_times_test; // Time of each serological test
     array[num_obs_total_test,K] int<lower=0, upper=1> serostatus_test; // Seropositivity for each test and pathogen
 
-    real log_baseline_hazard_mean; // Mean for normal prior on log baseline hazards
-    real <lower=0> log_baseline_hazard_scale; // Scale for normal prior on log baseline hazards
+    real <lower=0> baseline_hazard_scale; // Scale for half-normal prior on baseline hazards
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
     real <lower=0> seroreversion_rate_scale; // scale for half-normal prior on seroreversion rates
 }
@@ -130,7 +129,7 @@ transformed parameters {
 model {
     // Priors
     // target += -log(baseline_hazards); // log(1/λ₀) = -log(λ₀)
-    baseline_hazards ~ lognormal(log_baseline_hazard_mean, log_baseline_hazard_scale); // Log-normal prior on baseline hazards
+    baseline_hazards ~ normal(0, baseline_hazard_scale); // half-normal prior on baseline hazards
     betas ~ double_exponential(0, beta_scale);
     // target += -log(seroreversion_rates); // TO DO: make this uninformative
     seroreversion_rates ~ normal(0,seroreversion_rate_scale);
