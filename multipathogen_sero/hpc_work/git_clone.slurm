@@ -16,3 +16,9 @@ eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/github
 rm -rf multipathogen-sero
 git clone git@github.com:aleggs0/multipathogen-sero.git
+
+module load conda
+conda init bash
+source ~/.bashrc
+conda activate multipathogen-sero
+python multipathogen_sero/hpc_work/compile_stan.py

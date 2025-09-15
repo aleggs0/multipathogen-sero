@@ -28,9 +28,10 @@ from multipathogen_sero.analyse_chains import (
 # TODO: define the parameter grid (simulation params, random seed)
 
 ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 2))
-HOSTNAME = os.environ.get('HOSTNAME', '')
-TIMESTAMP = int(time.time()),
+HOSTNAME = os.environ.get('HOSTNAME', 'local')
+TIMESTAMP = int(time.time())
+JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', TIMESTAMP))
+JOB_NAME = os.environ.get('SLURM_JOB_NAME', 'local')
 
 
 def get_param_grid(array_index):
@@ -39,11 +40,9 @@ def get_param_grid(array_index):
     """
     beta_mats = [
         [[0, 0], [0, 0]],
-        [[0, 0.5], [0.5, 0]],
-        [[0, -0.5], [-0.5, 0]],
-        [[0, 0.5], [-0.5, 0]],
+        [[0, 0.5], [0.5, 0]]
     ]
-    log_frailty_stds = [0.0, 0.3, 1.0]
+    log_frailty_stds = [0.3, 1.0]
     n_beta = len(beta_mats)
     n_frailty = len(log_frailty_stds)
     total = n_beta * n_frailty
@@ -58,6 +57,7 @@ beta_mat, log_frailty_std = get_param_grid(ARRAY_INDEX)
 EXPT_SETTINGS = {
     "runtime_info": {
         "job_id": JOB_ID,
+        "job_name": JOB_NAME,
         "array_index": ARRAY_INDEX,
         "hostname": HOSTNAME,
         "timestamp": TIMESTAMP
@@ -73,15 +73,15 @@ EXPT_SETTINGS = {
     "train_data": {
         "n_people": 400,  # TODO: make this variable
         "t_min": 0,
-        "t_max": 20,
-        "survey_every": 2,
+        "t_max": 100,
+        "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
         "n_people": 400,
         "t_min": 0,
-        "t_max": 20,
-        "survey_every": 2,
+        "t_max": 100,
+        "survey_every": 10,
         "seed": 2411 + ARRAY_INDEX  # must be different from train seed
     },
     "inference_params": {
@@ -98,7 +98,7 @@ EXPT_SETTINGS = {
     "notes": ""
 }
 
-OUTPUT_DIR = MODEL_FITS_DIR / f"j{JOB_ID}" / f"a{ARRAY_INDEX}"
+OUTPUT_DIR = MODEL_FITS_DIR / f"{JOB_NAME}_j{JOB_ID}" / f"a{ARRAY_INDEX}"
 OUTPUT_DIR_FRAILTY = OUTPUT_DIR / "frailty"
 OUTPUT_DIR_NO_FRAILTY = OUTPUT_DIR / "no_frailty"
 os.makedirs(OUTPUT_DIR_FRAILTY, exist_ok=True)

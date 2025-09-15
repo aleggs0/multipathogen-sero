@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=frailty_shorter_timescale_narrow_prior
+#SBATCH --job-name=frailty_issues
 #SBATCH --array=1-2
 #SBATCH --clusters=srf_cpu_01
 #SBATCH --nodelist=swan02.cpu.stats.ox.ac.uk

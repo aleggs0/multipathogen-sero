@@ -16,6 +16,7 @@ from multipathogen_sero.simulate import (
 )
 from multipathogen_sero.analyse_chains import (
     save_fit_diagnose,
+    basic_summary,
     trace_plot,
     pairs_plot,
     posterior_plot,
@@ -28,9 +29,10 @@ from multipathogen_sero.analyse_chains import (
 # TODO: define the parameter grid (simulation params, random seed)
 
 ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 1))
-HOSTNAME = os.environ.get('HOSTNAME', '')
-TIMESTAMP = int(time.time()),
+HOSTNAME = os.environ.get('HOSTNAME', 'local')
+TIMESTAMP = int(time.time())
+JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', TIMESTAMP))
+JOB_NAME = os.environ.get('SLURM_JOB_NAME', 'local')
 
 
 def get_param_grid(array_index):
@@ -63,7 +65,7 @@ EXPT_SETTINGS = {
     "ground_truth_params": {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
-        "seroreversion_rates": [0.1, 0.1],
+        "seroreversion_rates": [0.05, 0.02],
         "log_frailty_std": log_frailty_std,
         "beta_mat": beta_mat,
         "seed": 42
@@ -71,15 +73,15 @@ EXPT_SETTINGS = {
     "train_data": {
         "n_people": 400,  # TODO: make this variable
         "t_min": 0,
-        "t_max": 20,
-        "survey_every": 2,
+        "t_max": 100,
+        "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
         "n_people": 400,
         "t_min": 0,
-        "t_max": 20,
-        "survey_every": 2,
+        "t_max": 100,
+        "survey_every": 10,
         "seed": 2411 + ARRAY_INDEX  # must be different from train seed
     },
     "inference_params": {
@@ -90,14 +92,14 @@ EXPT_SETTINGS = {
         "log_frailty_std": log_frailty_std,  # only when frailty is known
         "n_frailty_samples": 20,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
-        "iter_sampling": 100,
-        "iter_warmup": 100,
+        "iter_sampling": 200,
+        "iter_warmup": 200,
         "seed": 42
     },
     "notes": ""
 }
 
-OUTPUT_DIR = MODEL_FITS_DIR / f"j{JOB_ID}" / f"a{ARRAY_INDEX}"
+OUTPUT_DIR = MODEL_FITS_DIR / f"{JOB_NAME}_j{JOB_ID}" / f"a{ARRAY_INDEX}"
 OUTPUT_DIR_FRAILTY = OUTPUT_DIR / "frailty"
 OUTPUT_DIR_FRAILTY_KNOWN = OUTPUT_DIR / "frailty_known"
 OUTPUT_DIR_NO_FRAILTY = OUTPUT_DIR / "no_frailty"
@@ -376,9 +378,13 @@ with open(OUTPUT_DIR / "elpd_report.txt", "w") as f:
 plot_energy_vs_lp_and_params(
     idata_frailty, var_names=["betas", "log_frailty_std"], save_dir=OUTPUT_DIR_FRAILTY
 )
+basic_summary(idata_frailty, OUTPUT_DIR_FRAILTY)
 plot_energy_vs_lp_and_params(
     idata_no_frailty, var_names=["betas"], save_dir=OUTPUT_DIR_NO_FRAILTY
 )
+basic_summary(idata_no_frailty, OUTPUT_DIR_NO_FRAILTY)
 plot_energy_vs_lp_and_params(
     idata_frailty_known, var_names=["betas"], save_dir=OUTPUT_DIR_FRAILTY_KNOWN
 )
+basic_summary(idata_frailty_known, OUTPUT_DIR_FRAILTY_KNOWN)
+

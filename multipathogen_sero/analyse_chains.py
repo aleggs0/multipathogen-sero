@@ -37,17 +37,22 @@ def read_fit_csv_dir(fit_dir):
     return inference_data
 
 
-def basic_summary(inference_data, suppress_warnings=True):
-    """Print basic summary statistics for posterior samples.
+def basic_summary(inference_data, suppress_warnings=True, save_dir=None):
+    """Get basic summary statistics for posterior samples.
     Note: division by zero warnings will appear if any of the
     parameters are deterministically fixed.
     """
     if suppress_warnings:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            return az.summary(inference_data, round_to=2)
+            summary = az.summary(inference_data, round_to=2)
     else:
-        return az.summary(inference_data, round_to=2)
+        summary = az.summary(inference_data, round_to=2)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        summary_path = os.path.join(save_dir, "summary.csv")
+        summary.to_csv(summary_path)
+    return summary
 
 
 def trace_plot(inference_data, var_names=None, save_dir=None):
