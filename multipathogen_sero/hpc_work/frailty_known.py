@@ -71,14 +71,14 @@ EXPT_SETTINGS = {
         "seed": 42
     },
     "train_data": {
-        "n_people": 400,  # TODO: make this variable
+        "n_people": 1200,  # TODO: make this variable
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
-        "n_people": 400,
+        "n_people": 1200,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
@@ -92,8 +92,8 @@ EXPT_SETTINGS = {
         "log_frailty_std": log_frailty_std,  # only when frailty is known
         "n_frailty_samples": 20,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
-        "iter_sampling": 200,
-        "iter_warmup": 200,
+        "iter_sampling": 100,
+        "iter_warmup": 100,
         "seed": 42
     },
     "notes": ""

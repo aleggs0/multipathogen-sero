@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=frailty_known
-#SBATCH --array=1-4
+#SBATCH --job-name=frailty_known_large
+#SBATCH --array=1
 #SBATCH --clusters=srf_cpu_01
 #SBATCH --nodelist=swan02.cpu.stats.ox.ac.uk
 #SBATCH --partition=standard-cpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=10G
-#SBATCH --time=3:00:00
+#SBATCH --mem-per-cpu=32G
+#SBATCH --time=16:00:00
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL

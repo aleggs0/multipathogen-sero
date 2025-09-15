@@ -167,7 +167,7 @@ model {
         matrix[num_infection_states,1] next_infection_state_vector;
         matrix[num_infection_states,num_infection_states] q_matrix;
         for (i in 1:N) {
-            q_matrix = baseline_seroconversion_rate_matrix * frailties[i] + seroreversion_rate_matrix * frailties[i];
+            q_matrix = baseline_seroconversion_rate_matrix * frailties[i] + seroreversion_rate_matrix;
             prev_serostatus = serostatus[obs_idx,]; // Initial serostatus for the individual
             prev_obs_time = obs_times[obs_idx]; // Initial test time for the individual
             prev_state_index = infection_state_to_index(prev_serostatus);

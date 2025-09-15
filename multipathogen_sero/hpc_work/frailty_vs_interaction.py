@@ -65,7 +65,7 @@ EXPT_SETTINGS = {
     "ground_truth_params": {
         "n_pathogens": 2,
         "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
-        "seroreversion_rates": [0.1, 0.1],
+        "seroreversion_rates": [0.05, 0.02],
         "log_frailty_std": log_frailty_std,
         "beta_mat": beta_mat,
         "seed": 42
