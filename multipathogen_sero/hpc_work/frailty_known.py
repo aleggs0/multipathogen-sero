@@ -28,7 +28,7 @@ from multipathogen_sero.analyse_chains import (
 # TODO: define the parameter grid (simulation params, random seed)
 
 ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 2))
+JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', 1))
 HOSTNAME = os.environ.get('HOSTNAME', '')
 TIMESTAMP = int(time.time()),
 
@@ -39,11 +39,9 @@ def get_param_grid(array_index):
     """
     beta_mats = [
         [[0, 0], [0, 0]],
-        [[0, 0.5], [0.5, 0]],
-        [[0, -0.5], [-0.5, 0]],
-        [[0, 0.5], [-0.5, 0]],
+        [[0, 0.5], [0.5, 0]]
     ]
-    log_frailty_stds = [0.0, 0.3, 1.0]
+    log_frailty_stds = [0.3, 1.0]
     n_beta = len(beta_mats)
     n_frailty = len(log_frailty_stds)
     total = n_beta * n_frailty
@@ -89,6 +87,7 @@ EXPT_SETTINGS = {
         "beta_scale": 1.0,
         "seroreversion_rate_scale": 1.0,
         "log_frailty_std_scale": 0.1,  # only when frailty is modelled
+        "log_frailty_std": log_frailty_std,  # only when frailty is known
         "n_frailty_samples": 20,  # number of Monte Carlo samples for integration over frailty
         "chains": 4,
         "iter_sampling": 100,
@@ -100,8 +99,10 @@ EXPT_SETTINGS = {
 
 OUTPUT_DIR = MODEL_FITS_DIR / f"j{JOB_ID}" / f"a{ARRAY_INDEX}"
 OUTPUT_DIR_FRAILTY = OUTPUT_DIR / "frailty"
+OUTPUT_DIR_FRAILTY_KNOWN = OUTPUT_DIR / "frailty_known"
 OUTPUT_DIR_NO_FRAILTY = OUTPUT_DIR / "no_frailty"
 os.makedirs(OUTPUT_DIR_FRAILTY, exist_ok=True)
+os.makedirs(OUTPUT_DIR_FRAILTY_KNOWN, exist_ok=True)
 os.makedirs(OUTPUT_DIR_NO_FRAILTY, exist_ok=True)
 save_metadata_json(OUTPUT_DIR, EXPT_SETTINGS)
 
@@ -185,6 +186,7 @@ survey_wide_test = simulation_to_survey_wide(
 survey_wide_test = survey_wide_test.groupby('individual').filter(lambda x: len(x) > 1)
 n_nontrivial_individuals_test = len(survey_wide_test['individual'].unique())
 
+
 # fit both models on the data
 stan_data = {
     "K": EXPT_SETTINGS["ground_truth_params"]["n_pathogens"],
@@ -202,8 +204,29 @@ stan_data = {
     "baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["baseline_hazard_scale"],
     "beta_scale": EXPT_SETTINGS["inference_params"]["beta_scale"],
     "seroreversion_rate_scale": EXPT_SETTINGS["inference_params"]["seroreversion_rate_scale"],
-    "log_frailty_std_scale": EXPT_SETTINGS["inference_params"]["log_frailty_std_scale"]
+    "log_frailty_std_scale": EXPT_SETTINGS["inference_params"]["log_frailty_std_scale"],
+    "log_frailty_std": EXPT_SETTINGS["inference_params"]["log_frailty_std"]
 }
+# repeat for other fit
+model_frailty_known = CmdStanModel(
+    stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty_known.stan")
+)
+start_time = time.time()
+fit_frailty_known = model_frailty_known.sample(
+    data=stan_data,
+    chains=EXPT_SETTINGS["inference_params"]["chains"],
+    iter_sampling=EXPT_SETTINGS["inference_params"]["iter_sampling"],
+    iter_warmup=EXPT_SETTINGS["inference_params"]["iter_warmup"],
+    parallel_chains=EXPT_SETTINGS["inference_params"]["chains"],
+    seed=EXPT_SETTINGS["inference_params"]["seed"],
+    show_progress=False
+)
+end_time = time.time()
+print(f"Fitting time: {end_time - start_time} seconds")
+fit_frailty_known.save_csvfiles(OUTPUT_DIR_FRAILTY_KNOWN)
+print(save_fit_diagnose(fit_frailty_known, OUTPUT_DIR_FRAILTY_KNOWN))
+
+# repeat for other fit
 model_frailty = CmdStanModel(
     stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty.stan")
 )
@@ -243,9 +266,15 @@ print(f"Fitting time: {end_time - start_time} seconds")
 fit_no_frailty.save_csvfiles(OUTPUT_DIR_NO_FRAILTY)
 print(save_fit_diagnose(fit_no_frailty, OUTPUT_DIR_NO_FRAILTY))
 
+# from multipathogen_sero.analyse_chains import read_fit_csv_dir
+# idata_frailty = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "frailty")
+# idata_no_frailty = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "no_frailty")
+# idata_frailty_known = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "frailty_known")
+
 # save relevant plots
 idata_frailty = az.from_cmdstanpy(fit_frailty)
 idata_no_frailty = az.from_cmdstanpy(fit_no_frailty)
+idata_frailty_known = az.from_cmdstanpy(fit_frailty_known)
 trace_plot(
     idata_frailty,
     var_names=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
@@ -291,6 +320,26 @@ posterior_plot(
     },
     save_dir=OUTPUT_DIR_NO_FRAILTY
 )
+trace_plot(
+    idata_frailty_known,
+    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
+    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
+)
+pairs_plot(
+    idata_frailty_known,
+    var_names=["betas"],
+    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
+)
+posterior_plot(
+    idata_frailty_known,
+    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
+    ground_truth={
+        "betas": ground_truth_betas,
+        "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
+        "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
+    },
+    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
+)
 # do elpd
 elpd_frailty, se_elpd_frailty, _ = elpd_using_test_set(
     idata_frailty
@@ -298,14 +347,28 @@ elpd_frailty, se_elpd_frailty, _ = elpd_using_test_set(
 elpd_no_frailty, se_elpd_no_frailty, _ = elpd_using_test_set(
     idata_no_frailty
 )
-elpd_diff, se_elpd_diff = compare_using_test_set(
+elpd_frailty_known, se_elpd_frailty_known, _ = elpd_using_test_set(
+    idata_frailty_known
+)
+elpd_diff_frailty_no_frailty, se_elpd_diff_frailty_no_frailty = compare_using_test_set(
     idata_frailty,
     idata_no_frailty
+)
+elpd_diff_frailty_known_no_frailty, se_elpd_diff_frailty_known_no_frailty = compare_using_test_set(
+    idata_frailty_known,
+    idata_no_frailty
+)
+elpd_diff_frailty_frailty_known, se_elpd_diff_frailty_frailty_known = compare_using_test_set(
+    idata_frailty,
+    idata_frailty_known
 )
 elpd_report = f"""
 elpd (frailty model): {elpd_frailty} (SE: {se_elpd_frailty})
 elpd (no frailty model): {elpd_no_frailty} (SE: {se_elpd_no_frailty})
-elpd difference (frailty - no frailty): {elpd_diff} (SE: {se_elpd_diff})
+elpd difference (frailty - no frailty): {elpd_diff_frailty_no_frailty} (SE: {se_elpd_diff_frailty_no_frailty})
+elpd (frailty known model): {elpd_frailty_known} (SE: {se_elpd_frailty_known})
+elpd difference (frailty known - no frailty): {elpd_diff_frailty_known_no_frailty} (SE: {se_elpd_diff_frailty_known_no_frailty})
+elpd difference (frailty - frailty known): {elpd_diff_frailty_frailty_known} (SE: {se_elpd_diff_frailty_frailty_known})
 """
 with open(OUTPUT_DIR / "elpd_report.txt", "w") as f:
     f.write(elpd_report)
@@ -315,4 +378,7 @@ plot_energy_vs_lp_and_params(
 )
 plot_energy_vs_lp_and_params(
     idata_no_frailty, var_names=["betas"], save_dir=OUTPUT_DIR_NO_FRAILTY
+)
+plot_energy_vs_lp_and_params(
+    idata_frailty_known, var_names=["betas"], save_dir=OUTPUT_DIR_FRAILTY_KNOWN
 )

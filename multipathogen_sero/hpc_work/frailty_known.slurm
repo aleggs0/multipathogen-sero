@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=frailty_shorter_timescale_narrow_prior
-#SBATCH --array=1-2
+#SBATCH --job-name=frailty_known
+#SBATCH --array=1-4
 #SBATCH --clusters=srf_cpu_01
 #SBATCH --nodelist=swan02.cpu.stats.ox.ac.uk
 #SBATCH --partition=standard-cpu
