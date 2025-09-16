@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=git_pull
+#SBATCH --job-name=git_clone
 #SBATCH --clusters=srf_cpu_01
 #SBATCH --nodelist=swan02.cpu.stats.ox.ac.uk
 #SBATCH --partition=standard-cpu
@@ -21,4 +21,4 @@ module load conda
 conda init bash
 source ~/.bashrc
 conda activate multipathogen-sero
-python multipathogen_sero/hpc_work/compile_stan.py
+python ~/sero/multipathogen-sero/multipathogen_sero/hpc_work/compile_stan.py

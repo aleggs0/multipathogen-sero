@@ -37,7 +37,7 @@ def read_fit_csv_dir(fit_dir):
     return inference_data
 
 
-def basic_summary(inference_data, suppress_warnings=True, save_dir=None):
+def basic_summary(inference_data, save_dir=None, suppress_warnings=True):
     """Get basic summary statistics for posterior samples.
     Note: division by zero warnings will appear if any of the
     parameters are deterministically fixed.

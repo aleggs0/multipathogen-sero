@@ -308,7 +308,7 @@ trace_plot(
     save_dir=OUTPUT_DIR_NO_FRAILTY
 )
 pairs_plot(
-    idata_frailty,
+    idata_no_frailty,
     var_names=["betas"],
     save_dir=OUTPUT_DIR_NO_FRAILTY
 )

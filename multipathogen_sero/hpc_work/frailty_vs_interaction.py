@@ -21,7 +21,8 @@ from multipathogen_sero.analyse_chains import (
     posterior_plot,
     elpd_using_test_set,
     compare_using_test_set,
-    plot_energy_vs_lp_and_params
+    plot_energy_vs_lp_and_params,
+    basic_summary
 )
 
 # N_REPEATS = 3
@@ -277,7 +278,7 @@ trace_plot(
     save_dir=OUTPUT_DIR_NO_FRAILTY
 )
 pairs_plot(
-    idata_frailty,
+    idata_no_frailty,
     var_names=["betas"],
     save_dir=OUTPUT_DIR_NO_FRAILTY
 )
@@ -316,3 +317,5 @@ plot_energy_vs_lp_and_params(
 plot_energy_vs_lp_and_params(
     idata_no_frailty, var_names=["betas"], save_dir=OUTPUT_DIR_NO_FRAILTY
 )
+basic_summary(idata_frailty, OUTPUT_DIR_FRAILTY)
+basic_summary(idata_no_frailty, OUTPUT_DIR_NO_FRAILTY)
