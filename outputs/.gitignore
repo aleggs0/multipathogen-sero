@@ -1,0 +1,4 @@
+from_hpc/log/*
+from_hpc/model_fits/*
+from_local/model_fits/*
+!*/.gitkeep

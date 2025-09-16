@@ -10,7 +10,7 @@ from loguru import logger
 # Paths
 PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
-SRC_DIR = PROJ_ROOT / "multipathogen_sero"
+SRC_DIR = PROJ_ROOT / "src" / "multipathogen_sero"
 
 # CMDSTAN_PATHS = [
 #     "C:\\Users\\alexy\\.cmdstan\\RTools40\\mingw64\\bin",
@@ -24,10 +24,9 @@ INTERIM_DATA_DIR = DATA_DIR / "interim"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 EXTERNAL_DATA_DIR = DATA_DIR / "external"
 
-STAN_DIR = SRC_DIR / "stan"
-MODEL_FITS_DIR = PROJ_ROOT / "model_fits"
+OUTPUTS_DIR = PROJ_ROOT / "outputs"
 
-REPORTS_DIR = PROJ_ROOT / "reports"
-FIGURES_DIR = REPORTS_DIR / "figures"
+STAN_DIR = SRC_DIR / "models" / "stan"
+
 
 # If tqdm is installed, configure loguru with tqdm.write
