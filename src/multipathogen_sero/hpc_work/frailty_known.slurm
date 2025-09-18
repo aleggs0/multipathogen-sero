@@ -11,8 +11,8 @@
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL
-#SBATCH --output=/homes/ayan/log/frailty_known_%A_%a.out
-#SBATCH --error=/homes/ayan/log/frailty_known_%A_%a.err
+#SBATCH --output=/homes/ayan/sero/multipathogen_sero/outputs/from_hpc/log/frailty_known_%A_%a.out
+#SBATCH --error=/homes/ayan/sero/multipathogen_sero/outputs/from_hpc/log/frailty_known_%A_%a.err
 
 idx=${SLURM_ARRAY_TASK_ID}
 
