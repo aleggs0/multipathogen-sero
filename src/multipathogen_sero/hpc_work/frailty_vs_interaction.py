@@ -24,15 +24,17 @@ from multipathogen_sero.analyse_chains import (
     plot_energy_vs_lp_and_params,
     basic_summary
 )
+from multipathogen_sero.experiments import get_runtime_info
 
 # N_REPEATS = 3
 # TODO: define the parameter grid (simulation params, random seed)
 
-ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-HOSTNAME = os.environ.get('HOSTNAME', 'local')
-TIMESTAMP = int(time.time())
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', TIMESTAMP))
-JOB_NAME = os.environ.get('SLURM_JOB_NAME', 'local')
+runtime_info = get_runtime_info()
+JOB_NAME = runtime_info["job_name"]
+JOB_ID = runtime_info["job_id"]
+ARRAY_INDEX = runtime_info["array_index"]
+HOSTNAME = runtime_info["hostname"]
+TIMESTAMP = runtime_info["timestamp"]
 
 
 def get_param_grid(array_index):

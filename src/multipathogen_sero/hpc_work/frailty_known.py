@@ -7,7 +7,7 @@ from cmdstanpy import CmdStanModel
 import arviz as az
 
 from multipathogen_sero.io import save_metadata_json
-from multipathogen_sero.config import MODEL_FITS_DIR, STAN_DIR
+from multipathogen_sero.config import STAN_DIR, LOCAL_MODEL_FITS_DIR, HPC_MODEL_FITS_DIR
 from multipathogen_sero.simulate import (
     get_constant_foi,
     generate_uniform_birth_times,
@@ -15,24 +15,24 @@ from multipathogen_sero.simulate import (
     simulation_to_survey_wide
 )
 from multipathogen_sero.analyse_chains import (
-    save_fit_diagnose,
-    basic_summary,
-    trace_plot,
-    pairs_plot,
-    posterior_plot,
     elpd_using_test_set,
     compare_using_test_set,
-    plot_energy_vs_lp_and_params
 )
+from multipathogen_sero.models.model import PairwiseModel
+from multipathogen_sero.experiments import get_runtime_info
 
-# N_REPEATS = 3
-# TODO: define the parameter grid (simulation params, random seed)
 
-ARRAY_INDEX = int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-HOSTNAME = os.environ.get('HOSTNAME', 'local')
-TIMESTAMP = int(time.time())
-JOB_ID = int(os.environ.get('SLURM_ARRAY_JOB_ID', TIMESTAMP))
-JOB_NAME = os.environ.get('SLURM_JOB_NAME', 'local')
+runtime_info = get_runtime_info()
+IS_SLURM_JOB = runtime_info["is_slurm_job"]
+JOB_NAME = runtime_info["job_name"]
+JOB_ID = runtime_info["job_id"]
+ARRAY_INDEX = runtime_info["array_index"]
+HOSTNAME = runtime_info["hostname"]
+TIMESTAMP = runtime_info["timestamp"]
+if IS_SLURM_JOB:
+    MODEL_FITS_DIR = HPC_MODEL_FITS_DIR
+else:
+    MODEL_FITS_DIR = LOCAL_MODEL_FITS_DIR
 
 
 def get_param_grid(array_index):
@@ -71,26 +71,29 @@ EXPT_SETTINGS = {
         "seed": 42
     },
     "train_data": {
-        "n_people": 1200,  # TODO: make this variable
+        "n_people": 200,  # TODO: make this variable
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
-        "n_people": 1200,
+        "n_people": 200,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 2411 + ARRAY_INDEX  # must be different from train seed
     },
-    "inference_params": {
+    "prior_config": {
+        "n_pathogens": 2,
         "baseline_hazard_scale": 1.0,
         "beta_scale": 1.0,
         "seroreversion_rate_scale": 1.0,
-        "log_frailty_std_scale": 0.1,  # only when frailty is modelled
-        "log_frailty_std": log_frailty_std,  # only when frailty is known
-        "n_frailty_samples": 20,  # number of Monte Carlo samples for integration over frailty
+        "log_frailty_std_scale": 0.1,
+        "log_frailty_std": log_frailty_std
+    },
+    "sampling_config": {
+        "n_frailty_samples": 20,
         "chains": 4,
         "iter_sampling": 100,
         "iter_warmup": 100,
@@ -100,12 +103,12 @@ EXPT_SETTINGS = {
 }
 
 OUTPUT_DIR = MODEL_FITS_DIR / f"{JOB_NAME}_j{JOB_ID}" / f"a{ARRAY_INDEX}"
-OUTPUT_DIR_FRAILTY = OUTPUT_DIR / "frailty"
-OUTPUT_DIR_FRAILTY_KNOWN = OUTPUT_DIR / "frailty_known"
-OUTPUT_DIR_NO_FRAILTY = OUTPUT_DIR / "no_frailty"
-os.makedirs(OUTPUT_DIR_FRAILTY, exist_ok=True)
-os.makedirs(OUTPUT_DIR_FRAILTY_KNOWN, exist_ok=True)
-os.makedirs(OUTPUT_DIR_NO_FRAILTY, exist_ok=True)
+print(f"Output directory: {OUTPUT_DIR}")
+output_subdirs = {
+    "pairwise_serology_seroreversion_frailty.stan": OUTPUT_DIR / "frailty",
+    "pairwise_serology_seroreversion_frailty_known.stan": OUTPUT_DIR / "frailty_known",
+    "pairwise_serology_seroreversion.stan": OUTPUT_DIR / "no_frailty"
+}
 save_metadata_json(OUTPUT_DIR, EXPT_SETTINGS)
 
 # simulate the data
@@ -122,8 +125,6 @@ birth_times = generate_uniform_birth_times(
 foi_list = [
     get_constant_foi(a=baseline_hazard) for baseline_hazard in EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"]
 ]
-
-
 infections_df = simulate_infections_seroreversion(
     n_people=EXPT_SETTINGS["train_data"]["n_people"],
     n_pathogens=EXPT_SETTINGS["ground_truth_params"]["n_pathogens"],
@@ -136,7 +137,6 @@ infections_df = simulate_infections_seroreversion(
     seroreversion_rates=EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"],
     random_seed=EXPT_SETTINGS["ground_truth_params"]["seed"]
 )
-
 survey_every = EXPT_SETTINGS["train_data"]["survey_every"]
 survey_times = {
     # i + 1: survey_every * np.arange(np.floor(birth_times[i]/survey_every)+1, np.floor(t_max/survey_every)+1)
@@ -152,7 +152,6 @@ survey_wide = simulation_to_survey_wide(
 )
 # exclude individuals with only one row in survey_wide
 survey_wide = survey_wide.groupby('individual').filter(lambda x: len(x) > 1)
-n_nontrivial_individuals = len(survey_wide['individual'].unique())
 
 birth_times_test = generate_uniform_birth_times(
     n_people=EXPT_SETTINGS["test_data"]["n_people"],
@@ -186,183 +185,65 @@ survey_wide_test = simulation_to_survey_wide(
     survey_times=survey_times_test
 )
 survey_wide_test = survey_wide_test.groupby('individual').filter(lambda x: len(x) > 1)
-n_nontrivial_individuals_test = len(survey_wide_test['individual'].unique())
 
 
-# fit both models on the data
-stan_data = {
-    "K": EXPT_SETTINGS["ground_truth_params"]["n_pathogens"],
-    "N": n_nontrivial_individuals,
-    "num_obs": survey_wide.groupby('individual').size().values,
-    "num_obs_total": len(survey_wide),
-    "obs_times": survey_wide['time'].values,
-    "serostatus": survey_wide[[col for col in survey_wide.columns if col.startswith('serostatus_')]].values.astype(int),
-    "N_test": n_nontrivial_individuals_test,
-    "num_obs_test": survey_wide_test.groupby('individual').size().values,
-    "num_obs_total_test": len(survey_wide_test),
-    "obs_times_test": survey_wide_test['time'].values,
-    "serostatus_test": survey_wide_test[[col for col in survey_wide_test.columns if col.startswith('serostatus_')]].values.astype(int),
-    "n_frailty_samples": EXPT_SETTINGS["inference_params"]["n_frailty_samples"],
-    "baseline_hazard_scale": EXPT_SETTINGS["inference_params"]["baseline_hazard_scale"],
-    "beta_scale": EXPT_SETTINGS["inference_params"]["beta_scale"],
-    "seroreversion_rate_scale": EXPT_SETTINGS["inference_params"]["seroreversion_rate_scale"],
-    "log_frailty_std_scale": EXPT_SETTINGS["inference_params"]["log_frailty_std_scale"],
-    "log_frailty_std": EXPT_SETTINGS["inference_params"]["log_frailty_std"]
-}
-# repeat for other fit
-model_frailty_known = CmdStanModel(
-    stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty_known.stan")
-)
-start_time = time.time()
-fit_frailty_known = model_frailty_known.sample(
-    data=stan_data,
-    chains=EXPT_SETTINGS["inference_params"]["chains"],
-    iter_sampling=EXPT_SETTINGS["inference_params"]["iter_sampling"],
-    iter_warmup=EXPT_SETTINGS["inference_params"]["iter_warmup"],
-    parallel_chains=EXPT_SETTINGS["inference_params"]["chains"],
-    seed=EXPT_SETTINGS["inference_params"]["seed"],
-    show_progress=False
-)
-end_time = time.time()
-print(f"Fitting time: {end_time - start_time} seconds")
-fit_frailty_known.save_csvfiles(OUTPUT_DIR_FRAILTY_KNOWN)
-print(save_fit_diagnose(fit_frailty_known, OUTPUT_DIR_FRAILTY_KNOWN))
+models = {}
 
-# repeat for other fit
-model_frailty = CmdStanModel(
-    stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty.stan")
-)
+for model_name, fit_dir in output_subdirs.items():
 
-start_time = time.time()
-fit_frailty = model_frailty.sample(
-    data=stan_data,
-    chains=EXPT_SETTINGS["inference_params"]["chains"],
-    iter_sampling=EXPT_SETTINGS["inference_params"]["iter_sampling"],
-    iter_warmup=EXPT_SETTINGS["inference_params"]["iter_warmup"],
-    parallel_chains=EXPT_SETTINGS["inference_params"]["chains"],
-    seed=EXPT_SETTINGS["inference_params"]["seed"],
-    show_progress=False
-)
-end_time = time.time()
-print(f"Fitting time: {end_time - start_time} seconds")
+    # Initialize the model
+    model = PairwiseModel(
+        stan_file_name=model_name,
+        stan_dir=STAN_DIR,
+        prior_config=EXPT_SETTINGS["prior_config"],
+        fit_dir=fit_dir
+    )
 
-fit_frailty.save_csvfiles(OUTPUT_DIR_FRAILTY)
-print(save_fit_diagnose(fit_frailty, OUTPUT_DIR_FRAILTY))
+    # Fit the model
+    fit = model.fit_model(
+        survey_wide,
+        survey_wide_test,
+        **EXPT_SETTINGS["sampling_config"])
 
-# repeat for other fit
-model_no_frailty = CmdStanModel(
-    stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion.stan")
-)
-start_time = time.time()
-fit_no_frailty = model_no_frailty.sample(
-    data=stan_data,
-    chains=EXPT_SETTINGS["inference_params"]["chains"],
-    iter_sampling=EXPT_SETTINGS["inference_params"]["iter_sampling"],
-    iter_warmup=EXPT_SETTINGS["inference_params"]["iter_warmup"],
-    parallel_chains=EXPT_SETTINGS["inference_params"]["chains"],
-    seed=EXPT_SETTINGS["inference_params"]["seed"],
-    show_progress=False
-)
-end_time = time.time()
-print(f"Fitting time: {end_time - start_time} seconds")
-fit_no_frailty.save_csvfiles(OUTPUT_DIR_NO_FRAILTY)
-print(save_fit_diagnose(fit_no_frailty, OUTPUT_DIR_NO_FRAILTY))
+    # Save the fit
+    model.save_fit()
 
-# from multipathogen_sero.analyse_chains import read_fit_csv_dir
-# idata_frailty = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "frailty")
-# idata_no_frailty = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "no_frailty")
-# idata_frailty_known = read_fit_csv_dir(MODEL_FITS_DIR / "j1" / "a1" / "frailty_known")
+    # Convert to ArviZ InferenceData and generate plots
+    idata = model.get_arviz()
+    model.generate_plots(
+        ground_truth={
+            "betas": [
+                EXPT_SETTINGS["ground_truth_params"]["beta_mat"][0][1],
+                EXPT_SETTINGS["ground_truth_params"]["beta_mat"][1][0]
+            ],
+            "log_frailty_std": EXPT_SETTINGS["ground_truth_params"]["log_frailty_std"],
+            "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
+            "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
+        }
+    )
+    models[model_name] = model
 
-# save relevant plots
-idata_frailty = az.from_cmdstanpy(fit_frailty)
-idata_no_frailty = az.from_cmdstanpy(fit_no_frailty)
-idata_frailty_known = az.from_cmdstanpy(fit_frailty_known)
-trace_plot(
-    idata_frailty,
-    var_names=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
-    save_dir=OUTPUT_DIR_FRAILTY
-)
-pairs_plot(
-    idata_frailty,
-    var_names=["betas", "log_frailty_std"],
-    save_dir=OUTPUT_DIR_FRAILTY
-)
-ground_truth_betas = [
-    EXPT_SETTINGS["ground_truth_params"]["beta_mat"][0][1],
-    EXPT_SETTINGS["ground_truth_params"]["beta_mat"][1][0]
-]
-posterior_plot(
-    idata_frailty,
-    var_names=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
-    ground_truth={
-        "betas": ground_truth_betas,
-        "log_frailty_std": EXPT_SETTINGS["ground_truth_params"]["log_frailty_std"],
-        "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
-        "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
-    },
-    save_dir=OUTPUT_DIR_FRAILTY
-)
-trace_plot(
-    idata_no_frailty,
-    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
-    save_dir=OUTPUT_DIR_NO_FRAILTY
-)
-pairs_plot(
-    idata_no_frailty,
-    var_names=["betas"],
-    save_dir=OUTPUT_DIR_NO_FRAILTY
-)
-posterior_plot(
-    idata_no_frailty,
-    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
-    ground_truth={
-        "betas": ground_truth_betas,
-        "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
-        "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
-    },
-    save_dir=OUTPUT_DIR_NO_FRAILTY
-)
-trace_plot(
-    idata_frailty_known,
-    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
-    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
-)
-pairs_plot(
-    idata_frailty_known,
-    var_names=["betas"],
-    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
-)
-posterior_plot(
-    idata_frailty_known,
-    var_names=["betas", "baseline_hazards", "seroreversion_rates"],
-    ground_truth={
-        "betas": ground_truth_betas,
-        "baseline_hazards": EXPT_SETTINGS["ground_truth_params"]["baseline_hazards"],
-        "seroreversion_rates": EXPT_SETTINGS["ground_truth_params"]["seroreversion_rates"]
-    },
-    save_dir=OUTPUT_DIR_FRAILTY_KNOWN
-)
 # do elpd
 elpd_frailty, se_elpd_frailty, _ = elpd_using_test_set(
-    idata_frailty
+    models["pairwise_serology_seroreversion_frailty.stan"].idata
 )
 elpd_no_frailty, se_elpd_no_frailty, _ = elpd_using_test_set(
-    idata_no_frailty
+    models["pairwise_serology_seroreversion.stan"].idata
 )
 elpd_frailty_known, se_elpd_frailty_known, _ = elpd_using_test_set(
-    idata_frailty_known
+    models["pairwise_serology_seroreversion_frailty_known.stan"].idata
 )
 elpd_diff_frailty_no_frailty, se_elpd_diff_frailty_no_frailty = compare_using_test_set(
-    idata_frailty,
-    idata_no_frailty
+    models["pairwise_serology_seroreversion_frailty.stan"].idata,
+    models["pairwise_serology_seroreversion.stan"].idata
 )
 elpd_diff_frailty_known_no_frailty, se_elpd_diff_frailty_known_no_frailty = compare_using_test_set(
-    idata_frailty_known,
-    idata_no_frailty
+    models["pairwise_serology_seroreversion_frailty_known.stan"].idata,
+    models["pairwise_serology_seroreversion.stan"].idata
 )
 elpd_diff_frailty_frailty_known, se_elpd_diff_frailty_frailty_known = compare_using_test_set(
-    idata_frailty,
-    idata_frailty_known
+    models["pairwise_serology_seroreversion_frailty.stan"].idata,
+    models["pairwise_serology_seroreversion_frailty_known.stan"].idata
 )
 elpd_report = f"""
 elpd (frailty model): {elpd_frailty} (SE: {se_elpd_frailty})
@@ -374,17 +255,3 @@ elpd difference (frailty - frailty known): {elpd_diff_frailty_frailty_known} (SE
 """
 with open(OUTPUT_DIR / "elpd_report.txt", "w") as f:
     f.write(elpd_report)
-
-plot_energy_vs_lp_and_params(
-    idata_frailty, var_names=["betas", "log_frailty_std"], save_dir=OUTPUT_DIR_FRAILTY
-)
-basic_summary(idata_frailty, OUTPUT_DIR_FRAILTY)
-plot_energy_vs_lp_and_params(
-    idata_no_frailty, var_names=["betas"], save_dir=OUTPUT_DIR_NO_FRAILTY
-)
-basic_summary(idata_no_frailty, OUTPUT_DIR_NO_FRAILTY)
-plot_energy_vs_lp_and_params(
-    idata_frailty_known, var_names=["betas"], save_dir=OUTPUT_DIR_FRAILTY_KNOWN
-)
-basic_summary(idata_frailty_known, OUTPUT_DIR_FRAILTY_KNOWN)
-

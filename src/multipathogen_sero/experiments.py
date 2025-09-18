@@ -1,149 +1,45 @@
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-
-@dataclass
-class ModelConfig:
-    name: str
-    stan_file: str
-    var_names_trace: List[str]
-    var_names_pairs: List[str]
-    var_names_posterior: List[str]
-    var_names_energy: List[str]
-    
-    @property
-    def output_dir_name(self) -> str:
-        return self.name.lower().replace(" ", "_")
-
-# Define model configurations
-MODEL_CONFIGS = {
-    "frailty": ModelConfig(
-        name="frailty",
-        stan_file="pairwise_serology_seroreversion_frailty.stan",
-        var_names_trace=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
-        var_names_pairs=["betas", "log_frailty_std"],
-        var_names_posterior=["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"],
-        var_names_energy=["betas", "log_frailty_std"]
-    ),
-    "no_frailty": ModelConfig(
-        name="no_frailty",
-        stan_file="pairwise_serology_seroreversion.stan",
-        var_names_trace=["betas", "baseline_hazards", "seroreversion_rates"],
-        var_names_pairs=["betas"],
-        var_names_posterior=["betas", "baseline_hazards", "seroreversion_rates"],
-        var_names_energy=["betas"]
-    ),
-    "frailty_known": ModelConfig(
-        name="frailty_known",
-        stan_file="pairwise_serology_seroreversion_frailty_known.stan",
-        var_names_trace=["betas", "baseline_hazards", "seroreversion_rates"],
-        var_names_pairs=["betas"],
-        var_names_posterior=["betas", "baseline_hazards", "seroreversion_rates"],
-        var_names_energy=["betas"]
-    )
-}
-
-import time
 import os
-from pathlib import Path
-from typing import Dict, Any, List, Tuple
-from cmdstanpy import CmdStanModel
-import arviz as az
-
-class ModelRunner:
-    def __init__(self, config: ModelConfig, stan_dir: Path, output_base_dir: Path):
-        self.config = config
-        self.stan_dir = stan_dir
-        self.output_dir = output_base_dir / self.config.output_dir_name
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.model = None
-        self.fit = None
-        self.idata = None
-        
-    def compile_model(self) -> None:
-        """Compile the Stan model."""
-        stan_file_path = self.stan_dir / self.config.stan_file
-        if not stan_file_path.exists():
-            raise FileNotFoundError(f"Stan file not found: {stan_file_path}")
-        
-        self.model = CmdStanModel(stan_file=str(stan_file_path))
-        
-    def fit_model(self, stan_data: Dict[str, Any], **sample_kwargs) -> Tuple[float, Any]:
-        """Fit the model and return fitting time and fit object."""
-        if self.model is None:
-            self.compile_model()
-            
-        start_time = time.time()
-        self.fit = self.model.sample(data=stan_data, show_progress=False, **sample_kwargs)
-        end_time = time.time()
-        
-        fitting_time = end_time - start_time
-        print(f"Fitting time for {self.config.name}: {fitting_time:.2f} seconds")
-        
-        return fitting_time, self.fit
-        
-    def save_and_diagnose(self) -> str:
-        """Save CSV files and run diagnostics."""
-        from multipathogen_sero.analyse_chains import save_fit_diagnose
-        
-        if self.fit is None:
-            raise ValueError("Model must be fitted before saving")
-            
-        self.fit.save_csvfiles(self.output_dir)
-        return save_fit_diagnose(self.fit, self.output_dir)
-        
-    def convert_to_arviz(self) -> None:
-        """Convert fit to ArviZ InferenceData."""
-        if self.fit is None:
-            raise ValueError("Model must be fitted before conversion")
-            
-        self.idata = az.from_cmdstanpy(self.fit)
-        
-    def generate_plots(self, ground_truth: Dict[str, Any]) -> None:
-        """Generate all plots for this model."""
-        from multipathogen_sero.analyse_chains import (
-            trace_plot, pairs_plot, posterior_plot, 
-            plot_energy_vs_lp_and_params, basic_summary
-        )
-        
-        if self.idata is None:
-            raise ValueError("Model must be converted to ArviZ before plotting")
-            
-        # Generate plots
-        trace_plot(self.idata, var_names=self.config.var_names_trace, save_dir=self.output_dir)
-        pairs_plot(self.idata, var_names=self.config.var_names_pairs, save_dir=self.output_dir)
-        posterior_plot(self.idata, var_names=self.config.var_names_posterior, 
-                      ground_truth=ground_truth, save_dir=self.output_dir)
-        plot_energy_vs_lp_and_params(self.idata, var_names=self.config.var_names_energy, 
-                                    save_dir=self.output_dir)
-        basic_summary(self.idata, self.output_dir)
-
-import os
-import time
+import json
 from pathlib import Path
 from typing import Dict, List, Any
-import numpy as np
+from datetime import datetime
 
 from multipathogen_sero.io import save_metadata_json
-from multipathogen_sero.config import MODEL_FITS_DIR, STAN_DIR
-from multipathogen_sero.simulate import (
-    get_constant_foi, generate_uniform_birth_times,
-    simulate_infections_seroreversion, simulation_to_survey_wide
-)
+from multipathogen_sero.config import STAN_DIR
+# from multipathogen_sero.simulate import (
+#     get_constant_foi, generate_uniform_birth_times,
+#     simulate_infections_seroreversion, simulation_to_survey_wide
+# )
 from multipathogen_sero.analyse_chains import elpd_using_test_set, compare_using_test_set
-from .model_config import MODEL_CONFIGS
-from .model_runner import ModelRunner
+from multipathogen_sero.models.model import PairwiseModel
+
+
+def get_runtime_info():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return {
+        "is_slurm_job": 'SLURM_JOB_ID' in os.environ,
+        "job_name": os.environ.get('SLURM_JOB_NAME', 'local'),
+        "array_index": int(os.environ.get('SLURM_ARRAY_TASK_ID', 1)),
+        "hostname": os.environ.get('HOSTNAME', 'local'),
+        "timestamp": timestamp,
+        "job_id": os.environ.get('SLURM_ARRAY_JOB_ID', timestamp),
+    }
+
 
 class ExperimentRunner:
-    def __init__(self, array_index: int = None):
-        self.array_index = array_index or int(os.environ.get('SLURM_ARRAY_TASK_ID', 1))
-        self.hostname = os.environ.get('HOSTNAME', 'local')
-        self.timestamp = int(time.time())
-        self.job_id = int(os.environ.get('SLURM_ARRAY_JOB_ID', self.timestamp))
-        self.job_name = os.environ.get('SLURM_JOB_NAME', 'local')
-        
-        self.expt_settings = self._create_experiment_settings()
+    def __init__(self, array_index: int = None, config_path: str = None):
+        runtime_info = get_runtime_info()
+        self.runtime_info = runtime_info
+
+        self.array_index = array_index or runtime_info.get("array_index", 1)
+        self.job_name = runtime_info.get("job_name", "local")
+        self.job_id = runtime_info.get("job_id", 0)
+
+        if config_path:
+            with open(config_path, "r") as f:
+                self.expt_settings = json.load(f)
+        else:
+            self.expt_settings = self._create_experiment_settings()
         self.output_dir = self._setup_output_directories()
         self.model_runners = {}
         
@@ -152,12 +48,6 @@ class ExperimentRunner:
         beta_mat, log_frailty_std = self._get_param_grid(self.array_index)
         
         return {
-            "runtime_info": {
-                "job_id": self.job_id,
-                "array_index": self.array_index,
-                "hostname": self.hostname,
-                "timestamp": self.timestamp
-            },
             "ground_truth_params": {
                 "n_pathogens": 2,
                 "baseline_hazards": [0.05, 0.10],
@@ -180,17 +70,21 @@ class ExperimentRunner:
                 "survey_every": 10,
                 "seed": 2411 + self.array_index
             },
-            "inference_params": {
+            "prior_config": {
                 "baseline_hazard_scale": 1.0,
                 "beta_scale": 1.0,
                 "seroreversion_rate_scale": 1.0,
                 "log_frailty_std_scale": 0.1,
-                "log_frailty_std": log_frailty_std,
+                "log_frailty_std": log_frailty_std
+            },
+            "fit_config": {
                 "n_frailty_samples": 20,
-                "chains": 4,
-                "iter_sampling": 100,
-                "iter_warmup": 100,
-                "seed": 42
+                "sampling_kwargs": {
+                    "chains": 4,
+                    "iter_sampling": 100,
+                    "iter_warmup": 100,
+                    "seed": 42
+                }
             },
             "notes": ""
         }
@@ -229,17 +123,16 @@ class ExperimentRunner:
     def setup_models(self, model_names: List[str] = None) -> None:
         """Setup model runners for specified models."""
         if model_names is None:
-            model_names = list(MODEL_CONFIGS.keys())
-            
-        for model_name in model_names:
-            if model_name not in MODEL_CONFIGS:
-                raise ValueError(f"Unknown model: {model_name}")
-                
-            config = MODEL_CONFIGS[model_name]
-            self.model_runners[model_name] = ModelRunner(
-                config=config,
+            model_names = [
+                "pairwise_serology_seroreversion_frailty",
+                "pairwise_serology_seroreversion",
+                "pairwise_serology_seroreversion_frailty_known"
+            ]
+            self.model_runners["model_name"] = PairwiseModel(
+                stan_file_name=config["stan_file"],
                 stan_dir=STAN_DIR,
-                output_base_dir=self.output_dir
+                prior_config=config["prior_config"],
+                fit_dir=self.output_dir / model_name,
             )
             
     def fit_all_models(self, stan_data: Dict[str, Any]) -> None:
@@ -338,15 +231,6 @@ class ExperimentRunner:
         print("Experiment completed!")
 
 
-from experiment_runner import ExperimentRunner
-
-def main():
-    # Run experiment with all models
+if __name__ == "__main__":
     runner = ExperimentRunner()
     runner.run_experiment()
-    
-    # Or run with specific models only
-    # runner.run_experiment(model_names=["frailty", "no_frailty"])
-
-if __name__ == "__main__":
-    main()

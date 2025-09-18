@@ -4,13 +4,16 @@ import glob
 import numpy as np
 from scipy.special import logsumexp
 import matplotlib.pyplot as plt
+import cmdstanpy
 import arviz as az
 import math
 import warnings
-from multipathogen_sero.config import MODEL_FITS_DIR
 
 
-def save_fit_diagnose(fit, save_dir, filename="fit_diagnose.txt"):
+VARS_OF_INTEREST = ["betas", "log_frailty_std", "baseline_hazards", "seroreversion_rates"]
+
+
+def diagnose(fit, save_dir, filename="fit_diagnose.txt"):
     """
     Save the diagnostics from CmdStanPy fit.diagnose() to a text file.
 
@@ -28,13 +31,15 @@ def save_fit_diagnose(fit, save_dir, filename="fit_diagnose.txt"):
 
 
 def read_fit_csv_dir(fit_dir):
-    """Load CmdStanPy chain CSVs and metadata pickle from a fit directory."""
+    """Load CmdStanPy chain CSVs from a fit directory.
+    Hint: an arviz inference data object can be obtained from the fit by
+    az.from_cmdstanpy(fit)"""
     # Load chains
     chain_files = sorted(glob.glob(os.path.join(fit_dir, '*.csv')))
     if not chain_files:
         raise FileNotFoundError("No chain CSV files found in directory.")
-    inference_data = az.from_cmdstan(chain_files)
-    return inference_data
+    fit = cmdstanpy.from_csv(chain_files)
+    return fit
 
 
 def basic_summary(inference_data, save_dir=None, suppress_warnings=True):
@@ -57,6 +62,9 @@ def basic_summary(inference_data, save_dir=None, suppress_warnings=True):
 
 def trace_plot(inference_data, var_names=None, save_dir=None):
     """Plot trace for selected variables and save image in save_dir/."""
+    if var_names is None:
+        var_names = [var for var in VARS_OF_INTEREST if var in inference_data.posterior]
+    
     axes = az.plot_trace(inference_data, var_names=var_names)
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
@@ -65,8 +73,10 @@ def trace_plot(inference_data, var_names=None, save_dir=None):
     return axes
 
 
-def pairs_plot(inference_data, var_names=["betas", "log_frailty_std"], save_dir=None, figsize=None):
+def pairs_plot(inference_data, var_names=None, save_dir=None, figsize=None):
     """Plot trace for selected variables and save image in save_dir/."""
+    if var_names is None:
+        var_names = [var for var in VARS_OF_INTEREST if var in inference_data.posterior]
     axes = az.plot_pair(
         inference_data,
         var_names=var_names,
@@ -92,6 +102,8 @@ def posterior_plot(
     """Plot posterior distributions for selected variables, overlay ground truth if provided.
     Also return a dict indicating if ground truth is inside the HDI for each variable/component.
     """
+    if var_names is None:
+        var_names = [var for var in VARS_OF_INTEREST if var in inference_data.posterior]
     axes = az.plot_posterior(
         inference_data, var_names=var_names,
         grid=fig_grid,
@@ -215,13 +227,15 @@ def compare_using_test_set(
 
 
 def plot_energy_vs_lp_and_params(
-    inference_data, var_names=["betas", "log_frailty_std"], save_dir=None
+    inference_data, var_names=None, save_dir=None
 ):
     """
     Plot energy (from sample_stats) against lp (from sample_stats),
     and against each parameter in var_names (from posterior).
     Save all plots in a single figure.
     """
+    if var_names is None:
+        var_names = [var for var in VARS_OF_INTEREST if var in inference_data.posterior]
 
     energy = inference_data.sample_stats["energy"].values.flatten()
     lp = inference_data.sample_stats["lp"].values.flatten()
@@ -276,11 +290,12 @@ def plot_energy_vs_lp_and_params(
     plt.close(fig)
 
 
-# Example usage:
+# Example usage (doesn't actually work without a real fit directory)
 if __name__ == "__main__":
+    from multipathogen_sero.config import MODEL_FITS_DIR
     fit_dir = MODEL_FITS_DIR / "fit_1757355989"
     inference_data, metadata = read_fit_csv_dir(fit_dir)
     print("Metadata:", metadata)
-    # basic_summary(inference_data)
-    trace_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], save_dir=fit_dir)
-    posterior_plot(inference_data, var_names=["baseline_hazards", "beta_matrix"], save_dir=fit_dir)
+    basic_summary(inference_data, save_dir=fit_dir)
+    trace_plot(inference_data, save_dir=fit_dir)
+    posterior_plot(inference_data, save_dir=fit_dir)
