@@ -20,4 +20,4 @@ module load conda
 conda init bash
 source ~/.bashrc
 conda activate multipathogen-sero
-python ~/sero/multipathogen-sero/src/multipathogen_sero/hpc_work/compile_stan.py
+python ~/sero/multipathogen-sero/src/multipathogen_sero/models/compile_stan.py

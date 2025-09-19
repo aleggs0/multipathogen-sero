@@ -24,7 +24,7 @@ from multipathogen_sero.analyse_chains import (
     plot_energy_vs_lp_and_params,
     basic_summary
 )
-from multipathogen_sero.experiments import get_runtime_info
+from multipathogen_sero.experiments.experiments import get_runtime_info
 
 # N_REPEATS = 3
 # TODO: define the parameter grid (simulation params, random seed)

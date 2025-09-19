@@ -3,11 +3,11 @@
 
 data {
     int<lower=1> N;                         // Number of individuals
-    array[N] int<lower=1> num_tests;                 // Number of serological tests for each individual
-    int<lower=1> num_tests_total; // Total number of serological tests across all individuals
+    array[N] int<lower=1> num_obs;                 // Number of serological tests for each individual
+    int<lower=1> num_obs_total; // Total number of serological tests across all individuals
     int<lower=1> K;                         // Number of pathogens
-    array[num_tests_total] real test_times; // Time of each serological test
-    array[num_tests_total,K] int<lower=0, upper=1> serostatus; // Seropositivity for each test and pathogen
+    array[num_obs_total] real test_times; // Time of each serological test
+    array[num_obs_total,K] int<lower=0, upper=1> serostatus; // Seropositivity for each test and pathogen
     real interval; // For when all tests are same time apart.
     
     real log_baseline_hazard_mean; // Mean for normal prior on log baseline hazards
@@ -16,6 +16,8 @@ data {
 }
 
 transformed data {
+    int num_lags = num_obs_total - N; // Total number of lags (time between tests) across all individuals
+
     int num_infection_states = 1; {
         for (k in 1:K) {num_infection_states *= 2;}
     }
@@ -105,7 +107,7 @@ model {
 
     // Likelihood
     array[N] real log_lik = rep_array(0.0, N); {
-        int test_idx = 1; // Index for the current test
+        int obs_idx = 1; // Index for the current test
         array[K] int prev_serostatus;
         real prev_test_time;
         int prev_state_index;
@@ -115,16 +117,16 @@ model {
         int next_state_index;
         matrix[num_infection_states,1] next_infection_state_vector;
         for (i in 1:N) {
-            prev_serostatus = serostatus[test_idx,]; // Initial serostatus for the individual
-            prev_test_time = test_times[test_idx]; // Initial test time for the individual
+            prev_serostatus = serostatus[obs_idx,]; // Initial serostatus for the individual
+            prev_test_time = test_times[obs_idx]; // Initial test time for the individual
             prev_state_index = infection_state_to_index(prev_serostatus);
             prev_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
             prev_infection_state_vector[prev_state_index,1] = 1.0; // Set the initial state vector
-            test_idx += 1;
-            for (j in 1:num_tests[i]-1) {
+            obs_idx += 1;
+            for (j in 1:num_obs[i]-1) {
                 // Get the current test time and serostatus
-                next_serostatus = serostatus[test_idx];
-                next_test_time = test_times[test_idx];
+                next_serostatus = serostatus[obs_idx];
+                next_test_time = test_times[obs_idx];
                 next_state_index = infection_state_to_index(next_serostatus);
                 next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
                 next_infection_state_vector[next_state_index,1] = 1.0;
@@ -145,7 +147,7 @@ model {
                 prev_test_time = next_test_time;
                 prev_state_index = next_state_index;
                 prev_infection_state_vector = next_infection_state_vector;
-                test_idx += 1;
+                obs_idx += 1;
             }
         }
     }
@@ -153,10 +155,10 @@ model {
 }
 
 generated quantities {
-    // print(q_matrix);
-    // Likelihood
-    array[N] real log_lik = rep_array(0.0, N); {
-        int test_idx = 1; // Index for the current test
+    array[num_lags] real log_lik; {
+        int obs_idx = 1; // Index for the current test
+        int lag_idx = 1; // Index for the current lag (offsets from obs_idx by 1 after each indiv)
+
         array[K] int prev_serostatus;
         real prev_test_time;
         int prev_state_index;
@@ -166,21 +168,21 @@ generated quantities {
         int next_state_index;
         matrix[num_infection_states,1] next_infection_state_vector;
         for (i in 1:N) {
-            prev_serostatus = serostatus[test_idx,]; // Initial serostatus for the individual
-            prev_test_time = test_times[test_idx]; // Initial test time for the individual
+            prev_serostatus = serostatus[obs_idx,]; // Initial serostatus for the individual
+            prev_test_time = test_times[obs_idx]; // Initial test time for the individual
             prev_state_index = infection_state_to_index(prev_serostatus);
             prev_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
             prev_infection_state_vector[prev_state_index,1] = 1.0; // Set the initial state vector
-            test_idx += 1;
-            for (j in 1:num_tests[i]-1) {
+            obs_idx += 1;
+            for (j in 1:num_obs[i]-1) {
                 // Get the current test time and serostatus
-                next_serostatus = serostatus[test_idx];
-                next_test_time = test_times[test_idx];
+                next_serostatus = serostatus[obs_idx];
+                next_test_time = test_times[obs_idx];
                 next_state_index = infection_state_to_index(next_serostatus);
                 next_infection_state_vector = rep_matrix(0.0, num_infection_states, 1);
                 next_infection_state_vector[next_state_index,1] = 1.0;
                 // log_lik[i] += log(transition_matrix[prev_state_index,next_state_index]);
-                log_lik[i] += log(
+                log_lik[lag_idx] = log(
                     matrix_exp(
                         q_matrix * (next_test_time - prev_test_time) // q_matrix times time difference between tests
                     )[prev_state_index, next_state_index]
@@ -196,7 +198,8 @@ generated quantities {
                 prev_test_time = next_test_time;
                 prev_state_index = next_state_index;
                 prev_infection_state_vector = next_infection_state_vector;
-                test_idx += 1;
+                obs_idx += 1;
+                lag_idx += 1;
             }
         }
     }
