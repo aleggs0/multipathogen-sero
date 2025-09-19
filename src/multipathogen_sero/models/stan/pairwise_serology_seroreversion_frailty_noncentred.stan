@@ -20,7 +20,7 @@ data {
     real <lower=0> baseline_hazard_scale; // Scale for half-normal prior on baseline hazards
     real <lower=0> beta_scale; // scale for Laplace prior on log hazard ratios
     real <lower=0> seroreversion_rate_scale; // scale for half-normal prior on seroreversion rates
-    real<lower=0> log_frailty_std;             // Scale of individual frailties
+    real <lower=0> log_frailty_std_scale; // scale for half-normal prior on scale of individual frailties, sigma_u
 }
 
 transformed data {
@@ -54,7 +54,8 @@ parameters {
     array[K] real<lower=0> baseline_hazards;     // Constant baseline hazard λ₀
     array[K] real<lower=0> seroreversion_rates; // Seroreversion rates for each pathogen
     array[K*(K-1)] real betas;                  // Log hazard ratios for pathogen, pathogen pair where the pathogens are distinct
-    array[N] real log_frailty_deviations;           // Individual frailties
+    real<lower=0> log_frailty_std;             // Scale of individual frailties
+    array[N] real<lower=0> frailties;           // Individual frailties
 }
 
 transformed parameters {
@@ -93,12 +94,6 @@ transformed parameters {
         baseline_seroconversion_rate_matrix[infection_state_to_index({1,0}),infection_state_to_index({1,0})] = -baseline_hazards[2] * exp(beta_matrix[1,2]);
         baseline_seroconversion_rate_matrix[infection_state_to_index({0,1}),infection_state_to_index({0,1})] = -baseline_hazards[1] * exp(beta_matrix[2,1]);
     }
-
-    array[N] real frailties; {
-        for (i in 1:N) {
-            frailties[i] = exp(log_frailty_deviations[i] * log_frailty_std - 0.5 * log_frailty_std^2); // Individual frailty u_i = exp(σ_u * z_i - σ_u^2/2) where z_i ~ N(0,1)
-        }
-    }
 }
 
 model {
@@ -108,9 +103,10 @@ model {
     betas ~ double_exponential(0, beta_scale);
     // target += -log(seroreversion_rates); // TO DO: make this uninformative
     seroreversion_rates ~ normal(0,seroreversion_rate_scale);
+    log_frailty_std ~ normal(0,log_frailty_std_scale);
 
     // Likelihood
-    log_frailty_deviations ~ normal(0, 1);
+    frailties ~ lognormal(-0.5 * log_frailty_std^2, log_frailty_std); // Individual frailties with mean 1
     array[N] real log_lik = rep_array(0.0, N); {
         int obs_idx = 1; // Index for the current observation
         array[K] int prev_serostatus;
@@ -158,6 +154,7 @@ generated quantities {
     array[num_lags] real log_lik; {
         int obs_idx = 1; // Index for the current observation
         int lag_idx = 1; // Index for the current lag (offsets from obs_idx by 1 after each indiv)
+
         array[K] int prev_serostatus;
         real prev_obs_time;
         int prev_state_index;
@@ -197,6 +194,7 @@ generated quantities {
             }
         }
     }
+
     array[N_test] real log_lik_test; {
         real frailty_sample;
         array[N_test, n_frailty_samples] real log_lik_array = rep_array(0.0, N_test, n_frailty_samples); {
@@ -244,7 +242,7 @@ generated quantities {
                 }
             }
         }
-        for (i in 1:N_test) {
+        for (i in 1:N_test) { // averaging the likelihoods over the frailty samples
             log_lik_test[i] = log_sum_exp(log_lik_array[i,]) - log(n_frailty_samples);
         }
     }
