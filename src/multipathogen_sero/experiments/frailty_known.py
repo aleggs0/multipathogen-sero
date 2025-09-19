@@ -15,8 +15,7 @@ from multipathogen_sero.simulate import (
     simulation_to_survey_wide
 )
 from multipathogen_sero.analyse_chains import (
-    elpd_using_test_set,
-    compare_using_test_set,
+    model_comparison_report
 )
 from multipathogen_sero.models.model import PairwiseModel
 from multipathogen_sero.experiments.experiments import get_runtime_info
@@ -30,9 +29,9 @@ ARRAY_INDEX = runtime_info["array_index"]
 HOSTNAME = runtime_info["hostname"]
 TIMESTAMP = runtime_info["timestamp"]
 if IS_SLURM_JOB:
-    MODEL_FITS_DIR = HPC_MODEL_FITS_DIR
+    OUTPUT_DIR = HPC_MODEL_FITS_DIR / f"{JOB_NAME}_j{JOB_ID}" / f"a{ARRAY_INDEX}"
 else:
-    MODEL_FITS_DIR = LOCAL_MODEL_FITS_DIR
+    OUTPUT_DIR = LOCAL_MODEL_FITS_DIR / f"{JOB_NAME}_{TIMESTAMP}"
 
 
 def get_param_grid(array_index):
@@ -54,35 +53,37 @@ def get_param_grid(array_index):
 
 
 beta_mat, log_frailty_std = get_param_grid(ARRAY_INDEX)
+print(f"Output directory: {OUTPUT_DIR}")
 
 EXPT_SETTINGS = {
-    "runtime_info": {
-        "job_id": JOB_ID,
-        "array_index": ARRAY_INDEX,
-        "hostname": HOSTNAME,
-        "timestamp": TIMESTAMP
-    },
+    "runtime_info": runtime_info,
     "ground_truth_params": {
         "n_pathogens": 2,
-        "baseline_hazards": [0.05, 0.10],  # TODO: choose from prior
+        "baseline_hazards": [0.05, 0.10],
         "seroreversion_rates": [0.05, 0.02],
         "log_frailty_std": log_frailty_std,
         "beta_mat": beta_mat,
         "seed": 42
     },
     "train_data": {
-        "n_people": 200,  # TODO: make this variable
+        "n_people": 20,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 42 + ARRAY_INDEX
     },
     "test_data": {
-        "n_people": 200,
+        "n_people": 20,
         "t_min": 0,
         "t_max": 100,
         "survey_every": 10,
         "seed": 2411 + ARRAY_INDEX  # must be different from train seed
+    },
+    "models": {
+        "frailty": "pairwise_serology_seroreversion_frailty.stan",
+        "frailty_known": "pairwise_serology_seroreversion_frailty_known.stan",
+        "no_frailty": "pairwise_serology_seroreversion.stan",
+        "noncentred_frailty": "pairwise_serology_seroreversion_frailty_noncentred.stan"
     },
     "prior_config": {
         "n_pathogens": 2,
@@ -95,20 +96,13 @@ EXPT_SETTINGS = {
     "sampling_config": {
         "n_frailty_samples": 20,
         "chains": 4,
-        "iter_sampling": 100,
-        "iter_warmup": 100,
+        "iter_sampling": 10,
+        "iter_warmup": 10,
         "seed": 42
     },
     "notes": ""
 }
 
-OUTPUT_DIR = MODEL_FITS_DIR / f"{JOB_NAME}_j{JOB_ID}" / f"a{ARRAY_INDEX}"
-print(f"Output directory: {OUTPUT_DIR}")
-output_subdirs = {  # TODO: model name should be distinct from stan file name. may need two dictionaries.
-    "pairwise_serology_seroreversion_frailty.stan": OUTPUT_DIR / "frailty",
-    "pairwise_serology_seroreversion_frailty_known.stan": OUTPUT_DIR / "frailty_known",
-    "pairwise_serology_seroreversion.stan": OUTPUT_DIR / "no_frailty"
-}
 save_metadata_json(OUTPUT_DIR, EXPT_SETTINGS)
 
 # simulate the data
@@ -189,21 +183,23 @@ survey_wide_test = survey_wide_test.groupby('individual').filter(lambda x: len(x
 
 models = {}
 
-for model_name, fit_dir in output_subdirs.items():
+for model_name, stan_file_name in EXPT_SETTINGS["models"].items():
+    print(f"Running model: {model_name} ({stan_file_name})")
 
     # Initialize the model
     model = PairwiseModel(
-        stan_file_name=model_name,
+        stan_file_name=stan_file_name,
         stan_dir=STAN_DIR,
         prior_config=EXPT_SETTINGS["prior_config"],
-        fit_dir=fit_dir
+        fit_dir=OUTPUT_DIR / model_name
     )
 
     # Fit the model
     fit = model.fit_model(
         survey_wide,
         survey_wide_test,
-        **EXPT_SETTINGS["sampling_config"])
+        **EXPT_SETTINGS["sampling_config"]
+    )
 
     # Save the fit
     model.save_fit()
@@ -223,44 +219,7 @@ for model_name, fit_dir in output_subdirs.items():
     )
     models[model_name] = model
 
-# compare using loo, for predictive performance on existing individuals
-compare_loo = az.compare(
-    {name: model.idata for name, model in models.items()},
-    ic="loo"
+model_comparison_report_text = model_comparison_report(
+    {model_name: model.idata for model_name, model in models.items()},
+    save_dir=OUTPUT_DIR
 )
-
-# do elpd on test set, for predictive performance on new individuals
-elpd_frailty, se_elpd_frailty, _ = elpd_using_test_set(
-    models["pairwise_serology_seroreversion_frailty.stan"].idata
-)
-elpd_no_frailty, se_elpd_no_frailty, _ = elpd_using_test_set(
-    models["pairwise_serology_seroreversion.stan"].idata
-)
-elpd_frailty_known, se_elpd_frailty_known, _ = elpd_using_test_set(
-    models["pairwise_serology_seroreversion_frailty_known.stan"].idata
-)
-elpd_diff_frailty_no_frailty, se_elpd_diff_frailty_no_frailty = compare_using_test_set(
-    models["pairwise_serology_seroreversion_frailty.stan"].idata,
-    models["pairwise_serology_seroreversion.stan"].idata
-)
-elpd_diff_frailty_known_no_frailty, se_elpd_diff_frailty_known_no_frailty = compare_using_test_set(
-    models["pairwise_serology_seroreversion_frailty_known.stan"].idata,
-    models["pairwise_serology_seroreversion.stan"].idata
-)
-elpd_diff_frailty_frailty_known, se_elpd_diff_frailty_frailty_known = compare_using_test_set(
-    models["pairwise_serology_seroreversion_frailty.stan"].idata,
-    models["pairwise_serology_seroreversion_frailty_known.stan"].idata
-)
-model_comparison_report = f"""
-elpd (frailty model): {elpd_frailty} (SE: {se_elpd_frailty})
-elpd (no frailty model): {elpd_no_frailty} (SE: {se_elpd_no_frailty})
-elpd difference (frailty - no frailty): {elpd_diff_frailty_no_frailty} (SE: {se_elpd_diff_frailty_no_frailty})
-elpd (frailty known model): {elpd_frailty_known} (SE: {se_elpd_frailty_known})
-elpd difference (frailty known - no frailty): {elpd_diff_frailty_known_no_frailty} (SE: {se_elpd_diff_frailty_known_no_frailty})
-elpd difference (frailty - frailty known): {elpd_diff_frailty_frailty_known} (SE: {se_elpd_diff_frailty_frailty_known})
-
-compare_loo:
-{compare_loo.to_string()}
-"""
-with open(OUTPUT_DIR / "model_comparison_report.txt", "w") as f:
-    f.write(model_comparison_report)

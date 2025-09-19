@@ -2,6 +2,7 @@ import os
 import json
 import glob
 import numpy as np
+import pandas as pd
 from scipy.special import logsumexp
 import matplotlib.pyplot as plt
 import cmdstanpy
@@ -184,7 +185,7 @@ def elpd_using_test_set(
         The estimated expected log predictive density.
     se_elpd : float
         The standard error of the ELPD estimate [over individuals in the test set].
-    lse : np.ndarray
+    indiv_log_lik : np.ndarray
         The pointwise log predictive densities for each inidividual in the test set.
     """
     if var_name not in idata.posterior:
@@ -193,11 +194,11 @@ def elpd_using_test_set(
     # Combine chains and draws
     log_lik_reshaped = log_lik.reshape(-1, log_lik.shape[-1])  # shape (samples, n_data)
     # Compute pointwise log predictive density using log-sum-exp trick
-    lse = logsumexp(log_lik_reshaped, axis=0) - np.log(log_lik_reshaped.shape[0])  # shape (n_data,)
-    elpd = np.sum(lse)  # scalar
+    indiv_log_lik = logsumexp(log_lik_reshaped, axis=0) - np.log(log_lik_reshaped.shape[0])  # shape (n_data,)
+    elpd = np.sum(indiv_log_lik)  # scalar
     # Standard error of ELPD
-    se_elpd = np.sqrt(len(lse) * np.var(lse))  # scalar
-    return elpd, se_elpd, lse
+    se_elpd = np.sqrt(len(indiv_log_lik) * np.var(indiv_log_lik))  # scalar
+    return elpd, se_elpd, indiv_log_lik
 
 
 def compare_using_test_set(
@@ -218,6 +219,10 @@ def compare_using_test_set(
     se_diff : float
         The standard error of the ELPD difference.
     """
+    warnings.warn(
+        "This function is deprecated. Use elpd_test_compare() instead.",
+        DeprecationWarning
+    )
     _, _, lse1 = elpd_using_test_set(idata1, var_name=var_name)
     _, _, lse2 = elpd_using_test_set(idata2, var_name=var_name)
     diff = lse1 - lse2
@@ -289,6 +294,89 @@ def plot_energy_vs_lp_and_params(
         plt.savefig(save_dir / "energy_vs_params.png")
     plt.close(fig)
 
+
+def elpd_test_compare(idata_dict, var_name="log_lik_test"):
+    """
+    Compare models using custom ELPD and pairwise comparison functions.
+
+    Parameters:
+        models_dict (dict): {model name: arviz inference data object}
+        var_name (str): Name of the log-likelihood variable in posterior
+
+    Returns:
+        pd.DataFrame: Summary table of ELPD and pairwise comparisons to best model.
+    """
+    # Compute ELPD, SE, and indiv_log_lik for each model
+    results = {}
+    for name, idata in idata_dict.items():
+        elpd, se_elpd, indiv_log_lik = elpd_using_test_set(idata, var_name=var_name)
+        results[name] = {
+            "elpd": elpd,
+            "se_elpd": se_elpd,
+            "indiv_log_lik": indiv_log_lik
+        }
+
+    # Find best model (highest ELPD)
+    best_model = max(results, key=lambda k: results[k]["elpd"])
+
+    # Prepare summary table
+    rows = []
+    for name, res in results.items():
+        if name == best_model:
+            elpd_diff = 0.0
+            se_diff = 0.0
+        else:
+            # Pairwise difference: best - current
+            diff = results[best_model]["indiv_log_lik"] - res["indiv_log_lik"]
+            elpd_diff = np.sum(diff)
+            se_diff = np.sqrt(len(diff) * np.var(diff))
+        rows.append({
+            "model": name,
+            "elpd": res["elpd"],
+            "se_elpd": res["se_elpd"],
+            "elpd_diff_vs_best": elpd_diff,
+            "se_diff_vs_best": se_diff,
+            "is_best": name == best_model
+        })
+
+    df = pd.DataFrame(rows).sort_values("elpd", ascending=False).reset_index(drop=True)
+    return df
+
+
+def model_comparison_report(idata_dict, save_dir=None):
+    """
+    Generate a textual report comparing models using ELPD.
+
+    Parameters:
+        models_dict (dict): {model name: arviz inference data object}
+        var_name (str): Name of the log-likelihood variable in posterior
+
+    Returns:
+        str: Formatted report string
+    """
+    train_df = az.compare(
+        idata_dict,
+        ic="loo"
+    )
+    test_df = elpd_test_compare(idata_dict)
+
+    report_text = f"""
+Model Comparison Report
+
+Train set (LOO):
+{train_df.to_string()}
+
+Test set (ELPD):
+{test_df.to_string()}
+    """.strip()
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        report_path = os.path.join(save_dir, "model_comparison_report.txt")
+        with open(report_path, "w") as f:
+            f.write(report_text)
+    return report_text
+    
 
 # Example usage (doesn't actually work without a real fit directory)
 if __name__ == "__main__":
