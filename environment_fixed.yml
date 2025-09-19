@@ -1,0 +1,29 @@
+name: multipathogen-sero
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - ipykernel
+  - Jinja2
+  - jupyter_client
+  - python=3.11
+  - ipywidgets
+  - matplotlib
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  - statsmodels
+  - typing
+  - arviz
+  - cmdstan
+  - cmdstanpy
+  - lifelines
+  - pip
+  - pip:
+    - typer
+    - tqdm
+    - black
+    - flake8
+    - isort
+    - -e .

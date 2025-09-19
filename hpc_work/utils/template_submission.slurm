@@ -23,5 +23,5 @@ module load conda
 conda init bash
 source ~/.bashrc
 conda activate multipathogen-sero
-python multipathogen_sero/hpc_work/frailty_known.py
+python hpc_work/frailty_known.py
 

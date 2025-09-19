@@ -10,18 +10,18 @@ $ sbatch frailty.slurm
 $ srun --pty -t 0:30:00 -M srf_cpu_01 --partition=swan02-debug --mem=16G bash -l
 ```
 
-File transfer from node
+File transfer between node and gate
 ```
 ssh-keygen -t ed25519 -C "swan02_to_gate"  # call the file gate
 ssh-copy-id -i ~/.ssh/gate.pub
 rsync -avzhPue "ssh -i ~/.ssh/gate" /homes/ayan/sero/multipathogen-sero/outputs/from_hpc/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/outputs/from_hpc/
-rsync -avzhPue "ssh -i ~/.ssh/gate" ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/src/multipathogen_sero/ /homes/ayan/sero/multipathogen-sero/src/multipathogen_sero/
+rsync -avzhPue "ssh -i ~/.ssh/gate" ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/hpc_work/experiments/ /homes/ayan/sero/multipathogen-sero/hpc_work/experiments/
 ```
 
-File transfer to local
+File transfer between local and gate
 ```
 rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/outputs/from_hpc/ /home/ayan/sero/multipathogen-sero/outputs/from_hpc/
-rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" /homes/ayan/sero/multipathogen-sero/src/multipathogen_sero/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/src/multipathogen_sero/
+rsync -avzhPue "ssh -i ~/.ssh/ayan_at_gate" /home/ayan/sero/multipathogen-sero/hpc_work/experiments/ ayan@gate.stats.ox.ac.uk:~/sero/multipathogen-sero/hpc_work/experiments/
 ```
 
 Github
