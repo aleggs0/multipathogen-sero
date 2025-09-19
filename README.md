@@ -10,14 +10,9 @@ Setup includes:
 1. cloning this repository
 2. creating an environment e.g.
    ```bash
-   conda create -n multipathogen-sero python=3.11 ipykernel jupyter_client
-   conda activate multipathogen-sero
+   conda env create -f environment.yml
    ```
-3. Install packages from `environment.yml`:
-   ```bash
-   conda env update --file environment.yml --prune
-   ```
-4. Install the Python kernel for Jupyter:
+3. Install the Python kernel for Jupyter:
    ```bash
    python -m ipykernel install --user --name multipathogen-sero --display-name "Python3.11 (multipathogen-sero)"
    ```
@@ -29,30 +24,46 @@ Warning: this may not work without some fiddling around with cmdstanpy
 ```
 ├── LICENSE            <- Open-source license if one is chosen
 ├── README.md          <- The top-level README for developers using this project.
+├── Makefile           <- Makefile with commands like `make requirements` or `make clean`
+├── pyproject.toml     <- Project configuration file with package metadata for 
+│                         multipathogen_sero and configuration for tools like black
+├── environment.yml    <- Conda environment specification
+│
 ├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
+│   ├── external       <- Data from third party sources
+│   ├── interim        <- Intermediate data that has been transformed
+│   ├── processed      <- The final, canonical data sets for modeling
+│   └── raw            <- The original, immutable data dump
 │
 ├── docs               <- A default mkdocs project; see www.mkdocs.org for details
 │
-├── models             <- Trained and serialized models, model predictions, or model summaries
+├── hpc_work           <- Scripts and configurations for HPC execution
+│   ├── archive        <- Archived experiment scripts
+│   ├── experiments    <- Current HPC experiment scripts and SLURM job files
+│   └── utils          <- Utility scripts for HPC environment
 │
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
+├── notebooks          <- Jupyter notebooks for analysis and exploration
 │
-├── pyproject.toml     <- Project configuration file with package metadata for 
-│                         multipathogen_sero and configuration for tools like black
+├── outputs            <- Generated outputs from experiments and models
+│   ├── from_hpc       <- Results from HPC runs
+│   └── from_local     <- Results from local runs
 │
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-└── multipathogen_sero   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes multipathogen_sero a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    └── simulate.py             <- Code for simulation
+└── src
+    └── multipathogen_sero   <- Source code for use in this project
+        │
+        ├── __init__.py             <- Makes multipathogen_sero a Python module
+        ├── config.py               <- Store useful variables and configuration
+        ├── analyse_chains.py       <- Functions for analyzing MCMC chains
+        ├── io.py                   <- Input/output utilities
+        ├── simulate.py             <- Code for simulation
+        │
+        ├── experiments             <- Experiment runners and configurations
+        │   └── frailty_known.py    <- Specific experiment implementations
+        │
+        └── models                  <- Model implementations
+            ├── compile_stan.py     <- Stan model compilation script
+            ├── model.py            <- Main model class (PairwiseModel)
+            └── stan                <- Stan model files
+                ├── functions.stan  <- Shared Stan functions
+                ├── pairwise_serology_*.stan <- Various model implementations
+                └── multiplex_serology_*.stan <- Multiplex model variants
