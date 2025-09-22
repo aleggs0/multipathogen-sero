@@ -9,14 +9,15 @@ from multipathogen_sero.analyse_chains import (
     diagnose, trace_plot, pairs_plot, posterior_plot,
     plot_energy_vs_lp_and_params, basic_summary, read_fit_csv_dir
 )
+from multipathogen_sero.config import STAN_DIR
 
 
 class PairwiseModel:
     def __init__(self,
                  stan_file_name: str,
-                 stan_dir: Path,
                  prior_config: Dict[str, Any],
                  fit_dir: Path,
+                 stan_dir: Path = STAN_DIR,
                  analysis_dir: Path = None):
         """
         Initialize ModelRunner with Stan file and prior configuration.
@@ -94,11 +95,9 @@ class PairwiseModel:
         if self.fit is None:
             raise ValueError("Model must be fitted before saving")
         self.fit.save_csvfiles(self.output_dir)
-        # Save metadata to JSON
+        # Save metadata to JSON (excluding directory paths)
         metadata = {
             "stan_file_name": self.stan_file_name,
-            "stan_dir": str(self.stan_dir),
-            "fit_dir": str(self.output_dir),
             "prior_config": self.prior_config,
             "n_frailty_samples": getattr(self, "n_frailty_samples", None),
             "sampling_kwargs": getattr(self, "sampling_kwargs", {})
@@ -109,9 +108,14 @@ class PairwiseModel:
         return str(metadata_path)
 
     @classmethod
-    def load_fit(cls, fit_dir: Path):
+    def load_fit(cls, fit_dir: Path, stan_dir: Path = STAN_DIR, analysis_dir: Path = None):
         """
         Load a previously saved fit and metadata, returning a PairwiseModel instance.
+        
+        Args:
+            fit_dir: Directory containing the saved fit files
+            stan_dir: Directory containing Stan files
+            analysis_dir: Directory for analysis outputs (optional)
         """
         metadata_path = fit_dir / "fit_metadata.json"
         if not metadata_path.exists():
@@ -120,12 +124,13 @@ class PairwiseModel:
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
 
-        # Instantiate the model with saved attributes
+        # Instantiate the model with provided directories
         model = cls(
             stan_file_name=metadata["stan_file_name"],
-            stan_dir=Path(metadata["stan_dir"]),
-            fit_dir=Path(metadata["fit_dir"]),
-            prior_config=metadata["prior_config"]
+            fit_dir=fit_dir,
+            prior_config=metadata["prior_config"],
+            stan_dir=stan_dir,
+            analysis_dir=analysis_dir
         )
         model.n_frailty_samples = metadata.get("n_frailty_samples", None)
         model.sampling_kwargs = metadata.get("sampling_kwargs", {})
