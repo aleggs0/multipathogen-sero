@@ -16,7 +16,7 @@
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/github
 cd ~/sero/multipathogen-sero/
-git pull
+git reset --hard
 
 module load conda
 conda init bash
