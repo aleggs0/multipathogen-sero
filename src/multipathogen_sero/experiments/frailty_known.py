@@ -83,7 +83,7 @@ EXPT_SETTINGS = {
         "frailty": "pairwise_serology_seroreversion_frailty.stan",
         "frailty_known": "pairwise_serology_seroreversion_frailty_known.stan",
         "no_frailty": "pairwise_serology_seroreversion.stan",
-        "noncentred_frailty": "pairwise_serology_seroreversion_frailty_noncentred.stan"
+        "centred_frailty": "pairwise_serology_seroreversion_frailty_centred.stan"
     },
     "prior_config": {
         "n_pathogens": 2,

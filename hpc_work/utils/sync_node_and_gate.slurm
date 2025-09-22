@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sync_node_and_gate
 #SBATCH --clusters=srf_cpu_01
-#SBATCH --nodelist=swan02.cpu.stats.ox.ac.uk
+#SBATCH --nodelist=swan03.cpu.stats.ox.ac.uk
 #SBATCH --partition=standard-cpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
