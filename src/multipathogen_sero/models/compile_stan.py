@@ -13,6 +13,6 @@ model3 = CmdStanModel(
 model4 = CmdStanModel(
     stan_file=os.path.join(STAN_DIR, "pairwise_serology_seroreversion_frailty_centred.stan")
 )
-model5 = CmdStanModel(
-    stan_file=os.path.join(STAN_DIR, "pairwise_serology_frailty.stan")
-)
+# model5 = CmdStanModel(
+#     stan_file=os.path.join(STAN_DIR, "pairwise_serology_frailty.stan")
+# )

@@ -10,6 +10,8 @@
 #SBATCH --mail-user=alexander.yan@stats.ox.ac.uk
 #SBATCH --mail-type=END
 ##SBATCH --export=ALL
+#SBATCH --output=/homes/ayan/sero/multipathogen-sero/outputs/from_hpc/log/%x_%A.out
+#SBATCH --error=/homes/ayan/sero/multipathogen-sero/outputs/from_hpc/log/%x_%A.err
 
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/github
